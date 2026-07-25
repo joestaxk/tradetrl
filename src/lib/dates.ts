@@ -107,6 +107,33 @@ export function monthGrid(anchor: string): string[] {
   return Array.from({ length: 42 }, (_, i) => addDays(gridStart, i))
 }
 
+/**
+ * The month as whole weeks, with days outside the month rendered as gaps.
+ *
+ * A calendar that spills the tail of March into April makes it genuinely hard
+ * to read one month's shape — the eye keeps catching numbers that belong to a
+ * period you are not looking at. `null` marks a leading or trailing gap so the
+ * grid keeps its week alignment without showing foreign days.
+ *
+ * Trailing all-empty weeks are dropped, so a month that fits in five weeks
+ * doesn't render a sixth blank row.
+ */
+export function monthWeeks(anchor: string): (string | null)[][] {
+  const month = anchor.slice(0, 7)
+  const cells = monthGrid(anchor).map((d) => (d.slice(0, 7) === month ? d : null))
+  const weeks: (string | null)[][] = []
+  for (let i = 0; i < cells.length; i += 7) weeks.push(cells.slice(i, i + 7))
+  while (weeks.length > 0 && weeks[weeks.length - 1].every((d) => d === null)) {
+    weeks.pop()
+  }
+  return weeks
+}
+
+/** A day the trader could not have traded yet. */
+export function isFuture(day: string, now: string = today()): boolean {
+  return day > now
+}
+
 export function isSameMonth(day: string, anchor: string): boolean {
   return day.slice(0, 7) === anchor.slice(0, 7)
 }

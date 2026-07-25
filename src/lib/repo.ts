@@ -19,6 +19,7 @@ import {
   onSnapshot,
   orderBy,
   query,
+  deleteField,
   serverTimestamp,
   setDoc,
   updateDoc,
@@ -39,7 +40,8 @@ import type {
   UserPrefs,
 } from './types'
 
-export const DEFAULT_JOURNAL_ID = 'default'
+export { DEFAULT_JOURNAL_ID } from './journals'
+import { DEFAULT_JOURNAL_ID } from './journals'
 
 export const DEFAULT_PREFS: UserPrefs = {
   entryDetailLevel: 'minimal',
@@ -56,16 +58,32 @@ function db() {
   return d
 }
 
+/**
+ * Is this a plain `{}` object, as opposed to a class instance?
+ *
+ * This distinction is load-bearing. Firestore's `serverTimestamp()`,
+ * `Timestamp`, `GeoPoint` and `FieldValue` are all class instances that must
+ * reach the SDK untouched. Recursing into one turns the sentinel into
+ * `{ _methodName: 'serverTimestamp' }`, which Firestore rejects — and it
+ * rejects the whole write, so the trade never saves.
+ */
+function isPlainObject(v: unknown): v is Record<string, unknown> {
+  if (v === null || typeof v !== 'object') return false
+  const proto = Object.getPrototypeOf(v)
+  return proto === Object.prototype || proto === null
+}
+
 /** Strip undefined recursively — Firestore rejects it outright. */
 export function clean<T extends Record<string, unknown>>(obj: T): T {
   const out: Record<string, unknown> = {}
   for (const [k, v] of Object.entries(obj)) {
     if (v === undefined) continue
-    if (v !== null && typeof v === 'object' && !Array.isArray(v) && !(v instanceof Date)) {
-      const nested = clean(v as Record<string, unknown>)
+    if (isPlainObject(v)) {
+      const nested = clean(v)
       if (Object.keys(nested).length > 0) out[k] = nested
       continue
     }
+    // Arrays, Dates, Timestamps and FieldValue sentinels pass through whole.
     out[k] = v
   }
   return out as T
@@ -185,30 +203,51 @@ export async function ensureDefaultJournal(uid: string): Promise<void> {
 
 export async function listJournals(uid: string): Promise<Journal[]> {
   const snap = await getDocs(query(journalsCol(uid), orderBy('createdAt', 'asc')))
-  const rows = snap.docs.map((d) => ({
-    id: d.id,
-    name: d.data().name ?? 'Journal',
-    createdAt: toMillis(d.data().createdAt),
-    kind: d.data().kind,
-  }))
+  const rows = snap.docs.map((d) => toJournal(d.id, d.data()))
+  // Never return an empty list: a trader always has at least one account, and
+  // a missing journals collection is our bookkeeping problem, not theirs.
   return rows.length > 0
     ? rows
     : [{ id: DEFAULT_JOURNAL_ID, name: 'My journal', createdAt: Date.now() }]
 }
 
+function toJournal(id: string, data: Record<string, unknown>): Journal {
+  return {
+    id,
+    name: (data.name as string) ?? 'Journal',
+    createdAt: toMillis(data.createdAt),
+    kind: data.kind as string | undefined,
+    accountSize: data.accountSize as number | undefined,
+    currency: data.currency as string | undefined,
+    riskRules: (data.riskRules as Journal['riskRules']) ?? undefined,
+    archivedAt: data.archivedAt ? toMillis(data.archivedAt) : undefined,
+  }
+}
+
 export async function createJournal(
   uid: string,
-  name: string,
-  kind?: string,
+  input: Omit<Journal, 'id' | 'createdAt'>,
 ): Promise<Journal> {
   const ref = doc(journalsCol(uid))
-  const journal = { name, createdAt: Date.now(), kind }
-  await setDoc(ref, clean(journal))
+  const journal = { ...input, createdAt: Date.now() }
+  await setDoc(ref, clean(journal as unknown as Record<string, unknown>))
   return { id: ref.id, ...journal }
 }
 
-export async function renameJournal(uid: string, id: string, name: string): Promise<void> {
-  await updateDoc(doc(journalsCol(uid), id), { name })
+export async function updateJournal(
+  uid: string,
+  id: string,
+  patch: Partial<Omit<Journal, 'id' | 'createdAt'>>,
+): Promise<void> {
+  // A cleared field must actually clear, so undefined becomes deleteField()
+  // rather than being dropped — otherwise a journal could never fall back to
+  // the user's default once it had its own value.
+  const payload: Record<string, unknown> = {}
+  for (const [k, v] of Object.entries(patch)) {
+    payload[k] = v === undefined ? deleteField() : v
+  }
+  if (Object.keys(payload).length === 0) return
+  await updateDoc(doc(journalsCol(uid), id), payload)
 }
 
 export async function setActiveJournal(uid: string, journalId: string): Promise<void> {
@@ -282,15 +321,20 @@ export function subscribeTrades(
   onData: (trades: Trade[]) => void,
   onError?: (e: Error) => void,
 ): () => void {
-  const q = query(
-    tradesCol(uid),
-    where('journalId', '==', journalId),
-    orderBy('date', 'desc'),
-    limit(2000),
-  )
+  // Deliberately a single-field query. Combining `where('journalId')` with
+  // `orderBy('date')` needs a composite index, and until someone clicks the
+  // link in the console error the subscription throws and the journal renders
+  // empty with no explanation. Filtering by journal in memory costs nothing at
+  // this scale and means the app works on a freshly created database.
+  const q = query(tradesCol(uid), orderBy('date', 'desc'), limit(3000))
   return onSnapshot(
     q,
-    (snap) => onData(snap.docs.map((d) => toTrade(d.id, d.data()))),
+    (snap) =>
+      onData(
+        snap.docs
+          .map((d) => toTrade(d.id, d.data()))
+          .filter((t) => t.journalId === journalId),
+      ),
     (e) => onError?.(e),
   )
 }
@@ -336,7 +380,7 @@ export async function saveTrade(
   // Risk rules are about what you committed to when you entered, so they are
   // computed for open trades too — the size and the pair are already decided.
   const violations = computeViolations(
-    { pair: draft.pair, riskPct, riskAmount },
+    { pair: draft.pair, date: draft.date, riskPct, riskAmount },
     {
       rules: ctx.rules,
       accountSize: ctx.accountSize,

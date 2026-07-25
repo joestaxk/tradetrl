@@ -17,6 +17,7 @@ import { EquityCurve } from '#/components/charts/equity-curve'
 import { toast } from '#/components/ui/toast'
 import { useAppStore } from '#/store/app'
 import { useAuth } from '#/lib/auth'
+import { useJournals } from '#/lib/use-journals'
 import { useTrades } from '#/lib/use-trades'
 import { computeStats, equityCurve, maxDrawdown, tradesInRange } from '#/lib/aggregate'
 import { disciplineScore, planVsActual } from '#/lib/patterns'
@@ -35,7 +36,7 @@ import { cn } from '#/components/ui/cn'
  * lets the trader draw the conclusion.
  */
 export function ReviewPage() {
-  const { user, profile } = useAuth()
+  const { user } = useAuth()
   const { trades, loading } = useTrades()
 
   const kind = useAppStore((s) => s.reviewPeriod)
@@ -43,7 +44,8 @@ export function ReviewPage() {
   const anchor = useAppStore((s) => s.reviewAnchor)
   const setAnchor = useAppStore((s) => s.setReviewAnchor)
 
-  const currency = profile?.prefs.currency ?? 'USD'
+  const { active: account } = useJournals()
+  const currency = account.currency
   const range = useMemo(() => periodRange(anchor, kind), [anchor, kind])
   const id = useMemo(() => periodId(anchor, kind), [anchor, kind])
 
@@ -93,7 +95,7 @@ export function ReviewPage() {
     if (!user) return
     setSaving(true)
     try {
-      await savePlan(user.uid, anchor, kind, note.trim(), profile?.prefs.riskRules ?? {})
+      await savePlan(user.uid, anchor, kind, note.trim(), account.riskRules)
       const fresh = await loadPlan(user.uid, id)
       setPlan(fresh)
       toast.success('Saved')
@@ -240,7 +242,7 @@ export function ReviewPage() {
               <CardTitle>Your rules</CardTitle>
             </CardHeader>
             <CardBody>
-              {!rulesAreSet(profile?.prefs.riskRules) ? (
+              {!rulesAreSet(account.riskRules) ? (
                 <p className="text-[13px] leading-relaxed text-ink-muted">
                   You haven't set any rules yet, so there's nothing to measure against.
                   Setting a max risk or a list of pairs in Settings turns this into the

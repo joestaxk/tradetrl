@@ -145,3 +145,49 @@ describe('rulesAreSet', () => {
     expect(rulesAreSet({ allowedPairs: ['EURUSD'] })).toBe(true)
   })
 })
+
+describe('weekend rule', () => {
+  // 2026-07-18 is a Saturday, 2026-07-19 a Sunday, 2026-07-17 a Friday.
+  it('flags a Saturday when the trader keeps weekends clear', () => {
+    const v = computeViolations(
+      { pair: 'EURUSD', date: '2026-07-18' },
+      { rules: { noWeekendTrading: true } },
+    )
+    expect(v.map((x) => x.code)).toEqual(['weekend-trade'])
+    expect(v[0].message).toBe('Taken on a Saturday, which you keep clear.')
+  })
+
+  it('names Sunday correctly', () => {
+    const v = computeViolations(
+      { pair: 'EURUSD', date: '2026-07-19' },
+      { rules: { noWeekendTrading: true } },
+    )
+    expect(v[0].message).toContain('Sunday')
+  })
+
+  it('leaves weekdays alone', () => {
+    expect(
+      computeViolations(
+        { pair: 'EURUSD', date: '2026-07-17' },
+        { rules: { noWeekendTrading: true } },
+      ),
+    ).toEqual([])
+  })
+
+  it('says nothing when the rule is off — crypto runs all weekend', () => {
+    expect(
+      computeViolations({ pair: 'BTCUSD', date: '2026-07-18' }, { rules: {} }),
+    ).toEqual([])
+    expect(
+      computeViolations(
+        { pair: 'BTCUSD', date: '2026-07-18' },
+        { rules: { noWeekendTrading: false } },
+      ),
+    ).toEqual([])
+  })
+
+  it('counts as a configured rule on its own', () => {
+    expect(rulesAreSet({ noWeekendTrading: true })).toBe(true)
+    expect(rulesAreSet({ noWeekendTrading: false })).toBe(false)
+  })
+})

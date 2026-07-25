@@ -10,6 +10,7 @@
  */
 
 import { isNum, riskPctOf } from './calc'
+import { dayOfWeek } from './dates'
 import type { RiskRules, Trade, Violation } from './types'
 
 /** Normalise 'eur/usd', 'EURUSD ', 'eur-usd' → 'EURUSD' for comparison. */
@@ -25,7 +26,9 @@ export interface ViolationContext {
 }
 
 export function computeViolations(
-  trade: Pick<Trade, 'pair' | 'riskPct' | 'riskAmount'>,
+  // `date` is optional: the weekend check simply doesn't fire without one,
+  // and every other rule is date-independent.
+  trade: Pick<Trade, 'pair' | 'riskPct' | 'riskAmount'> & { date?: string },
   ctx: ViolationContext,
 ): Violation[] {
   const out: Violation[] = []
@@ -58,6 +61,17 @@ export function computeViolations(
     }
   }
 
+  // --- weekend ---
+  if (rules.noWeekendTrading && trade.date) {
+    const dow = dayOfWeek(trade.date)
+    if (dow === 0 || dow === 6) {
+      out.push({
+        code: 'weekend-trade',
+        message: `Taken on a ${dow === 6 ? 'Saturday' : 'Sunday'}, which you keep clear.`,
+      })
+    }
+  }
+
   // --- self-imposed daily cap ---
   if (isNum(rules.maxTradesPerDay) && isNum(ctx.sameDayTradeCount)) {
     // The trade being saved is the (count + 1)th of the day.
@@ -83,7 +97,8 @@ export function rulesAreSet(rules: RiskRules | undefined): boolean {
   return (
     isNum(rules.maxRiskPerTradePct) ||
     (rules.allowedPairs?.length ?? 0) > 0 ||
-    isNum(rules.maxTradesPerDay)
+    isNum(rules.maxTradesPerDay) ||
+    rules.noWeekendTrading === true
   )
 }
 

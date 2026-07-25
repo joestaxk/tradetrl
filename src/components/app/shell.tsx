@@ -11,6 +11,7 @@ import {
   DropdownTrigger,
 } from '#/components/ui/overlays'
 import { Badge } from '#/components/ui/primitives'
+import { JournalSwitcher } from '#/components/app/journal-switcher'
 import { useAuth } from '#/lib/auth'
 import { useAppStore } from '#/store/app'
 import { cn } from '#/components/ui/cn'
@@ -55,7 +56,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             ))}
           </nav>
 
-          <div className="ml-auto flex items-center gap-2">
+          <div className="ml-auto flex min-w-0 items-center gap-2">
+            {/* Which account you are journalling is never ambiguous. */}
+            <JournalSwitcher className="max-w-[9rem] sm:max-w-[14rem]" />
+
             <Button
               size="sm"
               variant="primary"

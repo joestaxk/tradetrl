@@ -2,7 +2,7 @@ import { Fragment, useMemo } from 'react'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { Button } from '#/components/ui/button'
 import { formatMoney, formatMoneyMicro } from '#/lib/calc'
-import { isSameMonth, monthGrid, monthLabel, shiftPeriod, today } from '#/lib/dates'
+import { isFuture, monthLabel, monthWeeks, shiftPeriod, startOfMonth, today } from '#/lib/dates'
 import type { DaySummary } from '#/lib/aggregate'
 import { cn } from '#/components/ui/cn'
 
@@ -16,28 +16,45 @@ interface Props {
   onShiftMonth: (anchor: string) => void
 }
 
+/**
+ * The month grid.
+ *
+ * Two rules make this readable rather than merely correct:
+ *
+ *  - **One month at a time.** Days belonging to the neighbouring months are
+ *    rendered as gaps, not as dimmed numbers. Spilling the tail of March into
+ *    April makes it genuinely hard to read one month's shape, because the eye
+ *    keeps catching figures from a period you are not looking at.
+ *  - **No future days.** You cannot have traded tomorrow, so tomorrow is not a
+ *    button. Letting someone open a future day invites a mis-dated trade that
+ *    then quietly distorts every statistic.
+ */
 export function MonthGrid({ anchor, byDay, currency = 'USD', onSelectDay, onShiftMonth }: Props) {
-  const days = useMemo(() => monthGrid(anchor), [anchor])
+  const weeks = useMemo(() => monthWeeks(anchor), [anchor])
   const now = today()
 
   // Weekly totals down the side — the review is a weekly artifact, so the
   // calendar should already be thinking in weeks.
-  const weekTotals = useMemo(() => {
-    const rows: { start: string; pnl: number; trades: number }[] = []
-    for (let i = 0; i < days.length; i += 7) {
-      const week = days.slice(i, i + 7)
-      let pnl = 0
-      let trades = 0
-      for (const d of week) {
-        const s = byDay.get(d)
-        if (!s) continue
-        pnl += s.stats.pnl
-        trades += s.stats.trades
-      }
-      rows.push({ start: week[0], pnl, trades })
-    }
-    return rows
-  }, [days, byDay])
+  const weekTotals = useMemo(
+    () =>
+      weeks.map((week) => {
+        let pnl = 0
+        let trades = 0
+        for (const d of week) {
+          if (!d) continue
+          const s = byDay.get(d)
+          if (!s) continue
+          pnl += s.stats.pnl
+          trades += s.stats.trades
+        }
+        return { pnl, trades }
+      }),
+    [weeks, byDay],
+  )
+
+  const showingCurrentMonth = startOfMonth(now) === startOfMonth(anchor)
+  // There is nothing to see in a month that hasn't started.
+  const canGoForward = startOfMonth(shiftPeriod(anchor, 'month', 1)) <= startOfMonth(now)
 
   return (
     <section className="rounded-2xl border border-line bg-panel" aria-label="Trading calendar">
@@ -56,7 +73,7 @@ export function MonthGrid({ anchor, byDay, currency = 'USD', onSelectDay, onShif
             size="sm"
             variant="ghost"
             onClick={() => onShiftMonth(now)}
-            className={cn(isSameMonth(now, anchor) && 'pointer-events-none opacity-40')}
+            disabled={showingCurrentMonth}
           >
             Today
           </Button>
@@ -64,6 +81,7 @@ export function MonthGrid({ anchor, byDay, currency = 'USD', onSelectDay, onShif
             size="icon-sm"
             variant="ghost"
             onClick={() => onShiftMonth(shiftPeriod(anchor, 'month', 1))}
+            disabled={!canGoForward}
             aria-label="Next month"
           >
             <ChevronRight aria-hidden />
@@ -72,8 +90,8 @@ export function MonthGrid({ anchor, byDay, currency = 'USD', onSelectDay, onShif
       </header>
 
       {/*
-        Grid is 7 columns + an 8th for the week total, which collapses below
-        sm. Every cell is min-h-11 so touch targets clear 44px even at 320px.
+        Seven columns plus an eighth for the week total, which collapses below
+        sm. Every cell clears 44px so touch targets hold at 320px.
       */}
       <div className="p-1.5 sm:p-3">
         <div className="grid grid-cols-7 gap-1 sm:grid-cols-[repeat(7,minmax(0,1fr))_minmax(0,0.9fr)] sm:gap-1.5">
@@ -90,28 +108,29 @@ export function MonthGrid({ anchor, byDay, currency = 'USD', onSelectDay, onShif
             Week
           </div>
 
-          {days.map((day, i) => {
-            const summary = byDay.get(day)
-            const inMonth = isSameMonth(day, anchor)
-            const isToday = day === now
-            const weekEnd = i % 7 === 6
-            const weekIndex = Math.floor(i / 7)
-
-            return (
-              <Fragment key={day}>
-                <DayCell
-                  day={day}
-                  summary={summary}
-                  inMonth={inMonth}
-                  isToday={isToday}
-                  currency={currency}
-                  index={i}
-                  onSelect={onSelectDay}
-                />
-                {weekEnd && <WeekTotal total={weekTotals[weekIndex]} currency={currency} />}
-              </Fragment>
-            )
-          })}
+          {weeks.map((week, wi) => (
+            <Fragment key={wi}>
+              {week.map((day, di) =>
+                day === null ? (
+                  // A gap, not a foreign day. Holds the column alignment and
+                  // nothing else.
+                  <div key={`gap-${wi}-${di}`} aria-hidden />
+                ) : (
+                  <DayCell
+                    key={day}
+                    day={day}
+                    summary={byDay.get(day)}
+                    isToday={day === now}
+                    isFutureDay={isFuture(day, now)}
+                    currency={currency}
+                    index={wi * 7 + di}
+                    onSelect={onSelectDay}
+                  />
+                ),
+              )}
+              <WeekTotal total={weekTotals[wi]} currency={currency} />
+            </Fragment>
+          ))}
         </div>
       </div>
     </section>
@@ -121,16 +140,16 @@ export function MonthGrid({ anchor, byDay, currency = 'USD', onSelectDay, onShif
 function DayCell({
   day,
   summary,
-  inMonth,
   isToday,
+  isFutureDay,
   currency,
   index,
   onSelect,
 }: {
   day: string
   summary?: DaySummary
-  inMonth: boolean
   isToday: boolean
+  isFutureDay: boolean
   currency: string
   index: number
   onSelect: (day: string) => void
@@ -138,28 +157,39 @@ function DayCell({
   const dayNum = Number(day.slice(-2))
   const outcome = summary?.outcome
   const hasTrades = (summary?.stats.trades ?? 0) > 0
+  const hasAnything = hasTrades || (summary?.open ?? 0) > 0
 
   return (
     <button
       type="button"
       onClick={() => onSelect(day)}
-      // Empty days are still openable — that is how you log a trade for a
-      // quiet day — but they carry no colour and no chrome (§7).
+      // A day that hasn't happened is inert rather than hidden: the shape of
+      // the month stays intact, but there is nothing to press.
+      disabled={isFutureDay}
+      aria-disabled={isFutureDay || undefined}
       className={cn(
         'stagger group relative flex min-h-[3.25rem] flex-col justify-between overflow-hidden rounded-lg p-1 text-left sm:min-h-[4.75rem] sm:p-2',
         'border transition-[background-color,border-color,transform] duration-200 ease-[var(--ease-out-quint)]',
         'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent',
-        !inMonth && 'opacity-35',
-        !hasTrades && 'border-transparent hover:border-line hover:bg-raised/60',
+        isFutureDay && 'cursor-default opacity-25',
+        !hasAnything &&
+          !isFutureDay &&
+          'border-transparent hover:border-line hover:bg-raised/60',
+        !hasAnything && isFutureDay && 'border-transparent',
         outcome === 'win' && 'border-win-edge bg-win-wash hover:border-win/60',
         outcome === 'loss' && 'border-loss-edge bg-loss-wash hover:border-loss/60',
         outcome === 'flat' && 'border-line-strong bg-flat-wash hover:border-ink-faint',
+        // A day whose only trades are still running gets the accent, not a
+        // win/loss colour — it has no result to report yet.
+        outcome === 'open' && 'border-accent-edge bg-accent-wash hover:border-accent/60',
       )}
       style={{ '--i': Math.min(index, 24) } as React.CSSProperties}
       aria-label={
-        hasTrades
-          ? `${day}: ${summary!.stats.trades} trades, ${formatMoney(summary!.stats.pnl, { currency })}`
-          : `${day}: no trades`
+        isFutureDay
+          ? `${day}: not yet`
+          : hasTrades
+            ? `${day}: ${summary!.stats.trades} trades, ${formatMoney(summary!.stats.pnl, { currency })}`
+            : `${day}: no trades`
       }
     >
       <span
@@ -172,7 +202,16 @@ function DayCell({
         {dayNum}
       </span>
 
-      {hasTrades ? (
+      {outcome === 'open' ? (
+        <span className="flex min-w-0 flex-col">
+          <span className="text-[10px] font-medium leading-tight text-accent-bright sm:text-[13px]">
+            open
+          </span>
+          <span className="hidden text-[10px] leading-tight text-ink-faint sm:block">
+            {summary!.open} waiting
+          </span>
+        </span>
+      ) : hasTrades ? (
         <span className="flex min-w-0 flex-col">
           <span
             className={cn(
@@ -196,8 +235,8 @@ function DayCell({
         </span>
       ) : (
         // A whisper of a dot, so an untraded day reads as deliberate rather
-        // than broken. Hidden entirely outside the current month.
-        inMonth && (
+        // than broken. Future days get nothing — there is no absence to mark.
+        !isFutureDay && (
           <span className="mx-auto mb-0.5 size-1 rounded-full bg-line-strong transition-colors duration-200 group-hover:bg-ink-faint" />
         )
       )}
@@ -206,7 +245,7 @@ function DayCell({
         <span
           className="absolute right-1 top-1 size-1.5 rounded-full bg-caution"
           aria-hidden
-          title="A rule was broken this day"
+          title="A rule was noted this day"
         />
       )}
     </button>
@@ -217,7 +256,7 @@ function WeekTotal({
   total,
   currency,
 }: {
-  total: { start: string; pnl: number; trades: number } | undefined
+  total: { pnl: number; trades: number } | undefined
   currency: string
 }) {
   if (!total || total.trades === 0) {

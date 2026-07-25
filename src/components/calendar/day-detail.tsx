@@ -14,9 +14,9 @@ import { Money, Stat, StatRow } from '#/components/ui/numbers'
 import { EquityCurve } from '#/components/charts/equity-curve'
 import { computeStats, equityCurve, sortChronological } from '#/lib/aggregate'
 import { formatPct, formatR } from '#/lib/calc'
-import { longDayLabel } from '#/lib/dates'
+import { durationMinutes, formatDuration, longDayLabel } from '#/lib/dates'
 import { useAppStore } from '#/store/app'
-import { useAuth } from '#/lib/auth'
+import { useJournals } from '#/lib/use-journals'
 import { useTrades } from '#/lib/use-trades'
 import type { Trade } from '#/lib/types'
 import { cn } from '#/components/ui/cn'
@@ -30,15 +30,16 @@ export function DayDetail() {
   const closeDay = useAppStore((s) => s.closeDay)
   const openNewTrade = useAppStore((s) => s.openNewTrade)
   const openEditTrade = useAppStore((s) => s.openEditTrade)
-  const { profile } = useAuth()
   const { trades } = useTrades()
-  const currency = profile?.prefs.currency ?? 'USD'
+  const { active: account } = useJournals()
+  const currency = account.currency
 
   const dayTrades = useMemo(
     () => (selectedDay ? sortChronological(trades.filter((t) => t.date === selectedDay)) : []),
     [trades, selectedDay],
   )
   const stats = useMemo(() => computeStats(dayTrades), [dayTrades])
+  const openCount = useMemo(() => dayTrades.filter((t) => t.status === 'open').length, [dayTrades])
   const curve = useMemo(() => equityCurve(dayTrades), [dayTrades])
 
   const chartPair = dayTrades.find((t) => t.beforeChartUrl && t.afterChartUrl)
@@ -50,13 +51,15 @@ export function DayDetail() {
           <DialogTitle>{selectedDay ? longDayLabel(selectedDay) : ''}</DialogTitle>
           <p className="text-[13px] text-ink-muted">
             {stats.trades === 0
-              ? 'Nothing logged for this day'
-              : `${stats.trades} ${stats.trades === 1 ? 'trade' : 'trades'} · ${stats.wins}W ${stats.losses}L`}
+              ? openCount > 0
+                ? `${openCount} still open`
+                : 'Nothing logged for this day'
+              : `${stats.trades} ${stats.trades === 1 ? 'trade' : 'trades'} · ${stats.wins}W ${stats.losses}L${openCount > 0 ? ` · ${openCount} open` : ''}`}
           </p>
         </DialogHeader>
 
         <DialogBody className="flex flex-col gap-5">
-          {stats.trades === 0 ? (
+          {stats.trades === 0 && openCount === 0 ? (
             <EmptyState
               icon={<Plus aria-hidden />}
               title="A quiet day"
@@ -75,6 +78,7 @@ export function DayDetail() {
             />
           ) : (
             <>
+              {stats.trades > 0 && (
               <StatRow>
                 <Stat
                   label="Net P&L"
@@ -102,6 +106,7 @@ export function DayDetail() {
                   index={3}
                 />
               </StatRow>
+              )}
 
               {dayTrades.length > 1 && (
                 <section>
@@ -134,7 +139,7 @@ export function DayDetail() {
           )}
         </DialogBody>
 
-        {stats.trades > 0 && (
+        {(stats.trades > 0 || openCount > 0) && (
           <DialogFooter>
             {chartPair && (
               <Button
@@ -187,7 +192,7 @@ function TradeTable({
         <span className="w-11">Time</span>
         <span>Symbol</span>
         <span className="w-16 text-right">Size</span>
-        <span className="w-16 text-right">R</span>
+        <span className="w-16 text-right">Held</span>
         <span className="w-24 text-right">P&amp;L</span>
       </div>
 
@@ -214,9 +219,13 @@ function TradeTable({
               <span
                 className={cn(
                   'size-1.5 shrink-0 rounded-full',
-                  t.outcome === 'win' && 'bg-win',
-                  t.outcome === 'loss' && 'bg-loss',
-                  t.outcome === 'flat' && 'bg-flat',
+                  t.status === 'open'
+                    ? 'bg-accent ring-2 ring-accent-wash'
+                    : t.outcome === 'win'
+                      ? 'bg-win'
+                      : t.outcome === 'loss'
+                        ? 'bg-loss'
+                        : 'bg-flat',
                 )}
                 aria-hidden
               />
@@ -237,10 +246,14 @@ function TradeTable({
               {t.lotSize ?? '—'}
             </span>
             <span className="hidden w-16 shrink-0 text-right text-[12px] text-ink-dim tnum sm:block">
-              {t.rMultiple === undefined ? '—' : formatR(t.rMultiple)}
+              {formatDuration(durationMinutes(t))}
             </span>
             <span className="ml-auto w-24 shrink-0 text-right text-[13px] font-medium sm:ml-0">
-              <Money value={t.pnl} currency={currency} />
+              {t.status === 'open' ? (
+                <span className="text-[12px] text-ink-muted">open</span>
+              ) : (
+                <Money value={t.pnl} currency={currency} />
+              )}
             </span>
           </button>
 

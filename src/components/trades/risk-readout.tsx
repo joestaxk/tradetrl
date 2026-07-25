@@ -161,6 +161,15 @@ export function RiskReadout({
  * requirements, so the form reads as nearly-finished instead of demanding.
  */
 function Empty({ result }: { result: RiskResult }) {
+  // No pair yet is not "an uncurated instrument" — saying we lack contract
+  // specs before they have chosen anything reads as a broken calculator.
+  if (result.pair.trim() === '') {
+    return (
+      <p className="text-[13px] leading-relaxed text-ink-muted">
+        Pick a pair, then add an entry and a stop to see what this trade risks.
+      </p>
+    )
+  }
   if (result.missingRate) {
     return (
       <p className="text-[13px] leading-relaxed text-ink-muted">

@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useMemo, useState } from 'react'
 import { subscribeTrades } from './repo'
 import { useAuth } from './auth'
+import { useJournals } from './use-journals'
 import { summarizeDays } from './aggregate'
 import type { DaySummary } from './aggregate'
 import type { Trade } from './types'
@@ -26,12 +27,13 @@ export const TradesOverrideContext = createContext<TradesValue | null>(null)
  */
 export function useTrades(): TradesValue {
   const override = useContext(TradesOverrideContext)
-  const { user, profile } = useAuth()
+  const { user } = useAuth()
+  const { active } = useJournals()
   const [trades, setTrades] = useState<Trade[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<Error | null>(null)
 
-  const journalId = profile?.activeJournalId ?? 'default'
+  const journalId = active.id
   const live = override === null
 
   useEffect(() => {

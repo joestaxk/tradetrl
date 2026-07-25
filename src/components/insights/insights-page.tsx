@@ -23,13 +23,13 @@ import { Money, Stat, StatRow } from '#/components/ui/numbers'
 import { Sparkline } from '#/components/charts/equity-curve'
 import { SessionHeatmap } from '#/components/charts/heatmap'
 import { toast } from '#/components/ui/toast'
-import { useAuth } from '#/lib/auth'
+import { useJournals } from '#/lib/use-journals'
 import { useTrades } from '#/lib/use-trades'
-import { byPair, byTag, computeStats, maxDrawdown } from '#/lib/aggregate'
+import { byPair, byTag, computeStats, maxDrawdown, medianHoldMinutes } from '#/lib/aggregate'
 import { allFlags, disciplineScore, journalingStreak, scoreTrend } from '#/lib/patterns'
 import { downloadCsv } from '#/lib/export'
 import { formatMoney, formatPct, formatR } from '#/lib/calc'
-import { addDays, startOfWeek, today } from '#/lib/dates'
+import { addDays, formatDuration, startOfWeek, today } from '#/lib/dates'
 import { cn } from '#/components/ui/cn'
 
 /**
@@ -40,9 +40,9 @@ import { cn } from '#/components/ui/cn'
  * proposition: more insight, identical input.
  */
 export function InsightsPage() {
-  const { profile } = useAuth()
   const { trades, loading } = useTrades()
-  const currency = profile?.prefs.currency ?? 'USD'
+  const { active: account } = useJournals()
+  const currency = account.currency
 
   const stats = useMemo(() => computeStats(trades), [trades])
   const discipline = useMemo(() => disciplineScore(trades), [trades])
@@ -51,6 +51,7 @@ export function InsightsPage() {
   const pairs = useMemo(() => byPair(trades).slice(0, 6), [trades])
   const tags = useMemo(() => byTag(trades).slice(0, 8), [trades])
   const drawdown = useMemo(() => maxDrawdown(trades), [trades])
+  const hold = useMemo(() => medianHoldMinutes(trades), [trades])
 
   // Last 8 weeks of discipline, for the trend sparkline.
   const trend = useMemo(() => {
@@ -94,7 +95,7 @@ export function InsightsPage() {
         </Button>
       </PageTitle>
 
-      <StatRow>
+      <StatRow className="sm:grid-cols-3 lg:grid-cols-5">
         <Stat
           label="All time"
           value={<Money value={stats.pnl} currency={currency} animate compact />}
@@ -115,6 +116,12 @@ export function InsightsPage() {
           index={2}
         />
         <Stat
+          label="Typical hold"
+          value={hold === null ? '—' : formatDuration(hold)}
+          sub={hold === null ? 'needs entry + close times' : 'median'}
+          index={3}
+        />
+        <Stat
           label="Streak"
           value={
             <span className="flex items-center gap-1.5">
@@ -123,7 +130,7 @@ export function InsightsPage() {
             </span>
           }
           sub={`best ${streak.longest} days`}
-          index={3}
+          index={4}
         />
       </StatRow>
 
@@ -240,7 +247,7 @@ export function InsightsPage() {
         </CardBody>
       </Card>
 
-      <div className="grid gap-4 lg:grid-cols-2">
+      <div className="grid gap-4 lg:grid-cols-2 [&>*]:min-w-0">
         {/* ---- by pair ---- */}
         <Card>
           <CardHeader>
@@ -282,11 +289,11 @@ function BreakdownList({
   currency: string
 }) {
   return (
-    <ul className="flex flex-col gap-1.5">
+    <ul className="flex min-w-0 flex-col gap-1.5">
       {rows.map((r, i) => (
         <li
           key={r.key}
-          className="stagger flex items-center gap-3 rounded-lg px-1 py-1.5"
+          className="stagger flex min-w-0 items-center gap-3 rounded-lg px-1 py-1.5"
           style={{ '--i': i } as React.CSSProperties}
         >
           <span className="min-w-0 flex-1 truncate text-[13px] font-medium text-ink-dim">
@@ -298,7 +305,7 @@ function BreakdownList({
           <span className="w-14 shrink-0 text-right text-[12px] text-ink-muted tnum">
             {r.stats.winRate === null ? '—' : formatPct(r.stats.winRate, 0)}
           </span>
-          <span className="w-24 shrink-0 text-right text-[13px] font-medium">
+          <span className="w-[5.5rem] shrink-0 text-right text-[13px] font-medium">
             <Money value={r.stats.pnl} currency={currency} compact />
           </span>
         </li>

@@ -26,7 +26,11 @@ export type PeriodKind = 'week' | 'month'
 export type TradeStatus = 'open' | 'closed'
 
 /** Codes for computed rule breaks. Never user-entered. */
-export type ViolationCode = 'risk-exceeded' | 'pair-not-allowed' | 'over-trade-cap'
+export type ViolationCode =
+  | 'risk-exceeded'
+  | 'pair-not-allowed'
+  | 'over-trade-cap'
+  | 'weekend-trade'
 
 export interface Violation {
   code: ViolationCode
@@ -39,6 +43,11 @@ export interface RiskRules {
   allowedPairs?: string[]
   /** Optional self-imposed cap on trades per day. */
   maxTradesPerDay?: number
+  /**
+   * "I don't trade weekends." Crypto runs 24/7 and some brokers quote
+   * Sunday-evening FX, so this is opt-in rather than assumed.
+   */
+  noWeekendTrading?: boolean
 }
 
 export interface UserPrefs {
@@ -71,12 +80,36 @@ export interface UserDoc {
   activeJournalId: string
 }
 
+/**
+ * A journal is a trading account.
+ *
+ * Risk is meaningless without knowing which balance it is a percentage of, so
+ * account size, currency and rules live here rather than on the user — a 1%
+ * rule on a 50k prop account and on a 100k personal account are different
+ * amounts of money, and conflating them would make every risk figure wrong.
+ *
+ * Anything left unset falls back to the user's defaults; see `resolveJournal`.
+ */
 export interface Journal {
   id: string
   name: string
   createdAt: number
   /** e.g. 'prop' | 'personal' | 'backtest' — free text, shown as a chip. */
   kind?: string
+  accountSize?: number
+  currency?: string
+  riskRules?: RiskRules
+  archivedAt?: number
+}
+
+/** A journal with every setting resolved against the user's defaults. */
+export interface ResolvedJournal {
+  id: string
+  name: string
+  kind?: string
+  accountSize?: number
+  currency: string
+  riskRules: RiskRules
 }
 
 export interface Trade {

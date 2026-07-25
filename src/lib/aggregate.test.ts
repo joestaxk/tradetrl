@@ -2,12 +2,15 @@ import { describe, expect, it } from 'vitest'
 import {
   EMPTY_STATS,
   byPair,
+  closedOnly,
+  openOnly,
   bySession,
   byTag,
   computeStats,
   equityCurve,
   groupByDay,
   maxDrawdown,
+  medianHoldMinutes,
   sessionHeatmap,
   sortChronological,
   summarizeDay,
@@ -223,5 +226,111 @@ describe('session heatmap', () => {
       makeTrade({ date: '2026-07-14', time: '22:00', pnl: 100 }),
     ])
     expect(cells.every((c) => c.stats.trades === 0)).toBe(true)
+  })
+})
+
+describe('open trades never contaminate statistics', () => {
+  it('excludes an open trade from every figure', () => {
+    const s = computeStats([
+      makeTrade({ pnl: 100 }),
+      makeTrade({ pnl: -50 }),
+      makeTrade({ status: 'open', pnl: 0 }),
+    ])
+    // The open trade carries a placeholder pnl of 0. Counting it would drag
+    // win rate from 50% to 33% and invent a break-even that never happened.
+    expect(s.trades).toBe(2)
+    expect(s.winRate).toBe(50)
+    expect(s.flats).toBe(0)
+    expect(s.pnl).toBe(50)
+  })
+
+  it('reports an all-open period as empty rather than flat', () => {
+    expect(computeStats([makeTrade({ status: 'open', pnl: 0 })])).toEqual(EMPTY_STATS)
+  })
+
+  it('keeps open trades out of the equity curve', () => {
+    const pts = equityCurve([
+      makeTrade({ pnl: 100 }),
+      makeTrade({ status: 'open', pnl: 0 }),
+      makeTrade({ pnl: 50 }),
+    ])
+    // Three points, not four: origin plus the two resolved trades.
+    expect(pts.map((p) => p.cumulative)).toEqual([0, 100, 150])
+  })
+
+  it('keeps open trades out of drawdown', () => {
+    expect(maxDrawdown([makeTrade({ pnl: 100 }), makeTrade({ status: 'open', pnl: 0 })])).toBe(0)
+  })
+
+  it('keeps open trades out of pair and session breakdowns', () => {
+    const rows = byPair([
+      makeTrade({ pair: 'EURUSD', pnl: 100 }),
+      makeTrade({ pair: 'EURUSD', status: 'open', pnl: 0 }),
+    ])
+    expect(rows[0].stats.trades).toBe(1)
+  })
+
+  it('splits open and closed cleanly', () => {
+    const trades = [makeTrade({ pnl: 10 }), makeTrade({ status: 'open', pnl: 0 })]
+    expect(closedOnly(trades)).toHaveLength(1)
+    expect(openOnly(trades)).toHaveLength(1)
+  })
+})
+
+describe('day summaries with open trades', () => {
+  it('marks a day with only open trades as open, not flat', () => {
+    const day = summarizeDay('2026-07-14', [makeTrade({ status: 'open', pnl: 0 })])
+    // 'flat' would claim the trader broke even. They have no result yet.
+    expect(day.outcome).toBe('open')
+    expect(day.open).toBe(1)
+    expect(day.stats.trades).toBe(0)
+  })
+
+  it('lets a resolved result decide the colour once one exists', () => {
+    const day = summarizeDay('2026-07-14', [
+      makeTrade({ pnl: 200 }),
+      makeTrade({ status: 'open', pnl: 0 }),
+    ])
+    expect(day.outcome).toBe('win')
+    expect(day.open).toBe(1)
+  })
+
+  it('still keeps the open trade in the day list for resolving', () => {
+    const day = summarizeDay('2026-07-14', [makeTrade({ status: 'open', pnl: 0 })])
+    expect(day.trades).toHaveLength(1)
+  })
+})
+
+describe('typical hold time', () => {
+  it('has nothing to report without clock times on both ends', () => {
+    expect(medianHoldMinutes([makeTrade({ time: '09:00' })])).toBeNull()
+  })
+
+  it('takes the median, not the mean', () => {
+    // One forgotten overnight hold must not triple a scalper's average.
+    const trades = [
+      makeTrade({ time: '09:00', closeTime: '09:10' }),
+      makeTrade({ time: '09:00', closeTime: '09:20' }),
+      makeTrade({ time: '09:00', closeDate: '2026-07-16', closeTime: '09:00' }),
+    ]
+    expect(medianHoldMinutes(trades)).toBe(20)
+  })
+
+  it('averages the middle two on an even count', () => {
+    expect(
+      medianHoldMinutes([
+        makeTrade({ time: '09:00', closeTime: '09:10' }),
+        makeTrade({ time: '09:00', closeTime: '09:30' }),
+      ]),
+    ).toBe(20)
+  })
+
+  it('ignores open trades, which have not finished being held', () => {
+    expect(
+      medianHoldMinutes([
+        makeTrade({ time: '09:00', closeTime: '09:30' }),
+        makeTrade({ status: 'open', time: '09:00', closeTime: '23:00' }),
+      ]),
+    ).toBe(30)
   })
 })

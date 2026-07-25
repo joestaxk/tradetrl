@@ -5,7 +5,7 @@
  */
 
 import { round2 } from './calc'
-import { sessionOf, type TradingSession } from './dates'
+import { durationMinutes, sessionOf, type TradingSession } from './dates'
 import type { Trade } from './types'
 
 export interface Stats {
@@ -201,7 +201,9 @@ export interface EquityPoint {
  * without times still produce a stable, meaningful curve.
  */
 export function equityCurve(trades: Trade[]): EquityPoint[] {
-  const ordered = sortChronological(trades)
+  // Closed only: an open trade has a placeholder P&L of 0 and would draw a
+  // flat step into the curve, implying a break-even that never happened.
+  const ordered = sortChronological(closedOnly(trades))
   const points: EquityPoint[] = [{ index: 0, cumulative: 0 }]
   let running = 0
   ordered.forEach((t, i) => {
@@ -221,12 +223,27 @@ export function sortChronological(trades: Trade[]): Trade[] {
   })
 }
 
+/**
+ * Median hold time in minutes, over the closed trades that carry a clock on
+ * both ends. Median rather than mean because one forgotten overnight position
+ * would otherwise triple a scalper's reported average.
+ */
+export function medianHoldMinutes(trades: Trade[]): number | null {
+  const held = closedOnly(trades)
+    .map((t) => durationMinutes(t))
+    .filter((m): m is number => m !== null)
+  if (held.length === 0) return null
+  const sorted = held.sort((a, b) => a - b)
+  const mid = Math.floor(sorted.length / 2)
+  return sorted.length % 2 ? sorted[mid] : Math.round((sorted[mid - 1] + sorted[mid]) / 2)
+}
+
 /** Largest peak-to-trough drop on the cumulative curve, as a positive number. */
 export function maxDrawdown(trades: Trade[]): number {
   let peak = 0
   let running = 0
   let worst = 0
-  for (const t of sortChronological(trades)) {
+  for (const t of sortChronological(closedOnly(trades))) {
     running += t.pnl
     if (running > peak) peak = running
     const dd = peak - running

@@ -24,11 +24,12 @@ import { SegmentedGroup, SegmentedItem, SegmentedShell } from '#/components/ui/t
 import { Badge, Divider } from '#/components/ui/primitives'
 import { toast } from '#/components/ui/toast'
 import { useAuth } from '#/lib/auth'
+import { useJournals } from '#/lib/use-journals'
 import { useAppStore } from '#/store/app'
 import { useTrades } from '#/lib/use-trades'
 import { deleteTrade, saveTrade } from '#/lib/repo'
 import { derive, formatMoney, formatR, isNum } from '#/lib/calc'
-import { durationMinutes, formatDuration, today } from '#/lib/dates'
+import { durationMinutes, formatDuration, isFuture, today } from '#/lib/dates'
 import { computeRisk, riskBudgetFrom, suggestLotSize } from '#/lib/risk'
 import { isCurated } from '#/lib/instruments'
 import { useFxRate } from '#/lib/use-fx-rate'
@@ -119,7 +120,8 @@ export function TradeEntrySheet() {
   const open = entryTarget !== null
   const editing = entryTarget !== null && entryTarget !== 'new' ? entryTarget : null
   const detailed = profile?.prefs.entryDetailLevel === 'detailed'
-  const currency = profile?.prefs.currency ?? 'USD'
+  const { active: account } = useJournals()
+  const currency = account.currency
 
   const [form, setForm] = useState<FormState>(BLANK)
   const [busy, setBusy] = useState(false)
@@ -182,6 +184,21 @@ export function TradeEntrySheet() {
 
   const isOpen = form.result === 'open'
 
+  /**
+   * You cannot have traded tomorrow. Native `max` covers the picker, but a
+   * typed date bypasses it, so the value is validated here too and the save
+   * is blocked — a mis-dated trade silently distorts every statistic that
+   * follows it.
+   */
+  const dateError = isFuture(form.date) ? "That date hasn't happened yet." : null
+
+  /**
+   * The close clock is worth asking for only when the trader is already
+   * recording times — otherwise it is two more empty boxes on the fast path.
+   */
+  const showCloseClock =
+    editing?.status === 'open' || form.time !== '' || form.closeTime !== ''
+
   /** Was this an open trade that the trader is now resolving? */
   const resolving = editing?.status === 'open' && !isOpen
 
@@ -222,7 +239,7 @@ export function TradeEntrySheet() {
      synchronous, so there is nothing to debounce. The only async part is the
      FX rate, and that only fires for a genuine cross.
      ------------------------------------------------------------------- */
-  const accountCurrency = profile?.prefs.currency ?? 'USD'
+  const accountCurrency = account.currency
   const fx = useFxRate(form.pair, accountCurrency)
 
   const risk = useMemo(
@@ -233,7 +250,7 @@ export function TradeEntrySheet() {
         stopPrice: num(form.stopPrice),
         lotSize: num(form.lotSize),
         accountCurrency,
-        accountSize: profile?.prefs.accountSize,
+        accountSize: account.accountSize,
         fxRate: fx.rate ?? undefined,
         manualPipValue: num(form.manualPipValue),
       }),
@@ -244,23 +261,23 @@ export function TradeEntrySheet() {
       form.lotSize,
       form.manualPipValue,
       accountCurrency,
-      profile?.prefs.accountSize,
+      account.accountSize,
       fx.rate,
     ],
   )
 
-  const maxRiskPct = profile?.prefs.riskRules.maxRiskPerTradePct
+  const maxRiskPct = account.riskRules.maxRiskPerTradePct
 
   /** Lots that would land exactly on the trader's own risk limit. */
   const suggestedLots = useMemo(() => {
-    const budget = riskBudgetFrom(profile?.prefs.accountSize, maxRiskPct)
+    const budget = riskBudgetFrom(account.accountSize, maxRiskPct)
     if (budget === null) return null
     const lots = suggestLotSize({
       pair: form.pair,
       entryPrice: num(form.entryPrice),
       stopPrice: num(form.stopPrice),
       accountCurrency,
-      accountSize: profile?.prefs.accountSize,
+      accountSize: account.accountSize,
       fxRate: fx.rate ?? undefined,
       manualPipValue: num(form.manualPipValue),
       riskBudget: budget,
@@ -274,7 +291,7 @@ export function TradeEntrySheet() {
     form.lotSize,
     form.manualPipValue,
     accountCurrency,
-    profile?.prefs.accountSize,
+    account.accountSize,
     maxRiskPct,
     fx.rate,
   ])
@@ -290,9 +307,9 @@ export function TradeEntrySheet() {
         stopPrice: num(form.stopPrice),
         lotSize: num(form.lotSize),
         riskAmount: num(form.riskAmount),
-        accountSize: profile?.prefs.accountSize,
+        accountSize: account.accountSize,
       }),
-    [form, profile?.prefs.accountSize],
+    [form, account.accountSize],
   )
 
   const canApply =
@@ -306,7 +323,7 @@ export function TradeEntrySheet() {
 
   // An open trade needs only a pair and a date — that is the entire point of
   // being able to log it before you know how it went.
-  const valid =
+  const valid = !dateError &&
     form.pair.trim().length > 0 &&
     form.date.length === 10 &&
     (isOpen || signedAmount !== undefined)
@@ -353,11 +370,11 @@ export function TradeEntrySheet() {
 
       await saveTrade(
         user.uid,
-        profile?.activeJournalId ?? 'default',
+        account.id,
         draft,
         {
-          rules: profile?.prefs.riskRules ?? {},
-          accountSize: profile?.prefs.accountSize,
+          rules: account.riskRules,
+          accountSize: account.accountSize,
           sameDayTradeCount,
         },
         editing?.id,
@@ -369,8 +386,16 @@ export function TradeEntrySheet() {
         resolving ? 'Resolved' : editing ? 'Trade updated' : isOpen ? 'Logged as open' : 'Logged',
       )
       closeEntry()
-    } catch {
-      toast.error("Couldn't save that trade", { description: 'Nothing was lost — try again.' })
+    } catch (e) {
+      console.error('[trade] save failed:', e)
+      const code = (e as { code?: string })?.code
+      toast.error("Couldn't save that trade", {
+        description:
+          code === 'permission-denied'
+            ? 'Your account does not have write access yet.'
+            : 'Nothing was lost — your details are still here. Try again.',
+        duration: 6000,
+      })
     } finally {
       setBusy(false)
     }
@@ -565,8 +590,8 @@ export function TradeEntrySheet() {
             </Field>
           </div>
 
-          {/* ---- close clock: only once there is something to close ---- */}
-          {!isOpen && (
+          {/* ---- close clock: only once it is actually meaningful ---- */}
+          {!isOpen && showCloseClock && (
             <div className="flex flex-col gap-3">
               <div className="grid grid-cols-2 gap-3">
                 <Field label="Closed" optional>

@@ -47,3 +47,43 @@ describe('clean — the Firestore boundary', () => {
     expect(Object.keys(clean(draft)).sort()).toEqual(['date', 'direction', 'pair', 'pnl'])
   })
 })
+
+describe('clean — values that must survive untouched', () => {
+  it('passes a Firestore sentinel through whole', () => {
+    // serverTimestamp() is a FieldValue instance. Recursing into it produces
+    // { _methodName: 'serverTimestamp' }, which Firestore rejects — and it
+    // rejects the entire write, so the trade silently never saves.
+    class FieldValue {
+      _methodName = 'serverTimestamp'
+    }
+    const sentinel = new FieldValue()
+    const out = clean({ pnl: 100, updatedAt: sentinel })
+    expect(out.updatedAt).toBe(sentinel)
+    expect(out.updatedAt).toBeInstanceOf(FieldValue)
+  })
+
+  it('passes a Timestamp-like class instance through whole', () => {
+    class Timestamp {
+      constructor(
+        public seconds: number,
+        public nanoseconds: number,
+      ) {}
+    }
+    const ts = new Timestamp(1, 2)
+    expect(clean({ createdAt: ts }).createdAt).toBe(ts)
+  })
+
+  it('passes a Date through whole', () => {
+    const d = new Date('2026-07-14T00:00:00Z')
+    expect(clean({ at: d }).at).toBe(d)
+  })
+
+  it('still recurses into genuine plain objects', () => {
+    expect(clean({ prefs: { a: 1, b: undefined } })).toEqual({ prefs: { a: 1 } })
+  })
+
+  it('keeps arrays of objects intact', () => {
+    const violations = [{ code: 'risk-exceeded', message: 'x' }]
+    expect(clean({ ruleViolations: violations }).ruleViolations).toBe(violations)
+  })
+})

@@ -1,15 +1,16 @@
 import { useMemo } from 'react'
-import { CalendarDays, Flame, List, Plus } from 'lucide-react'
+import { CalendarDays, Flame, List, Plus, TriangleAlert } from 'lucide-react'
 import { Button } from '#/components/ui/button'
 import { SegmentedGroup, SegmentedItem, SegmentedShell } from '#/components/ui/toggles'
 import { Money, Stat, StatRow } from '#/components/ui/numbers'
 import { EmptyState, PageTitle, Skeleton } from '#/components/ui/primitives'
 import { Tip } from '#/components/ui/overlays'
 import { MonthGrid } from '#/components/calendar/month-grid'
+import { OpenTrades } from '#/components/trades/open-trades'
 import { DayDetail } from '#/components/calendar/day-detail'
 import { ListView } from '#/components/list/list-view'
 import { useAppStore } from '#/store/app'
-import { useAuth } from '#/lib/auth'
+import { useJournals } from '#/lib/use-journals'
 import { useTrades } from '#/lib/use-trades'
 import { computeStats, tradesInRange } from '#/lib/aggregate'
 import { journalingStreak } from '#/lib/patterns'
@@ -17,17 +18,18 @@ import { formatPct } from '#/lib/calc'
 import { periodRange, today } from '#/lib/dates'
 
 export function JournalPage() {
-  const { profile } = useAuth()
-  const { trades, byDay, loading } = useTrades()
+  const { trades, byDay, loading, error } = useTrades()
 
   const viewMode = useAppStore((s) => s.viewMode)
   const setViewMode = useAppStore((s) => s.setViewMode)
   const anchorDay = useAppStore((s) => s.anchorDay)
   const setAnchorDay = useAppStore((s) => s.setAnchorDay)
   const openDay = useAppStore((s) => s.openDay)
+  const openEditTrade = useAppStore((s) => s.openEditTrade)
   const openNewTrade = useAppStore((s) => s.openNewTrade)
 
-  const currency = profile?.prefs.currency ?? 'USD'
+  const { active: account } = useJournals()
+  const currency = account.currency
 
   const monthStats = useMemo(() => {
     const { start, end } = periodRange(anchorDay, 'month')
@@ -37,6 +39,25 @@ export function JournalPage() {
   const streak = useMemo(() => journalingStreak(trades, today()), [trades])
 
   if (loading) return <JournalSkeleton />
+
+  // A failed read must never render as "you have no trades" — that reads as
+  // data loss to someone who knows they logged something.
+  if (error) {
+    return (
+      <div className="rounded-2xl border border-loss-edge bg-loss-wash">
+        <EmptyState
+          icon={<TriangleAlert aria-hidden />}
+          title="We couldn't load your journal"
+          body="Your trades are safe — this is a connection problem on our side. Try reloading in a moment."
+          action={
+            <Button variant="secondary" onClick={() => window.location.reload()}>
+              Reload
+            </Button>
+          }
+        />
+      </div>
+    )
+  }
 
   const noTradesEver = trades.length === 0
 
@@ -102,6 +123,8 @@ export function JournalPage() {
           />
         </StatRow>
       )}
+
+      <OpenTrades trades={trades} onResolve={openEditTrade} />
 
       {noTradesEver ? (
         <div className="rounded-2xl border border-line bg-panel">

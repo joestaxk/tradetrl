@@ -44,6 +44,8 @@ export interface RiskInput {
 }
 
 export interface RiskResult {
+  /** Echoed back so the UI can tell 'not chosen yet' from 'uncurated'. */
+  pair: string
   mode: CalcMode
   instrument: Instrument | null
   /**
@@ -71,6 +73,7 @@ export interface RiskResult {
 }
 
 const EMPTY: RiskResult = {
+  pair: '',
   mode: 'manual',
   instrument: null,
   pipValuePerLot: null,
@@ -151,6 +154,7 @@ export function computeRisk(input: RiskInput): RiskResult {
 
   return {
     ...EMPTY,
+    pair: input.pair,
     mode,
     instrument,
     pipValuePerLot,

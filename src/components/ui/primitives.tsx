@@ -10,7 +10,7 @@ export const Card = forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivEleme
       <div
         ref={ref}
         className={cn(
-          'rounded-[14px] border border-line bg-panel',
+          'min-w-0 rounded-[14px] border border-line bg-panel',
           // Elevation by border + a whisper of inset light, never color blocking.
           'shadow-[0_1px_0_0_rgba(255,255,255,0.025)_inset]',
           className,

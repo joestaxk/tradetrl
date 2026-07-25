@@ -15,31 +15,37 @@ import { toast } from '#/components/ui/toast'
 import { useAuth } from '#/lib/auth'
 import { daysUntilExpiry } from '#/lib/session'
 import { flags } from '#/lib/env'
+import { CURRENCIES } from '#/lib/currencies'
+import { AccountsCard } from '#/components/settings/accounts-card'
+import { useJournals } from '#/lib/use-journals'
+import { updateJournal } from '#/lib/repo'
 import type { EntryDetailLevel } from '#/lib/types'
-
-const CURRENCIES = ['USD', 'EUR', 'GBP', 'AUD', 'CAD', 'JPY', 'CHF', 'ZAR', 'INR']
 
 /**
  * Settings (§6). Everything chosen at onboarding is here, in the same words,
  * so "editable later" is discoverable rather than merely technically true.
  */
 export function SettingsPage() {
-  const { profile, updatePrefs, signOutNow } = useAuth()
+  const { user, profile, updatePrefs, signOutNow } = useAuth()
   const prefs = profile?.prefs
+  // Rules belong to the account being journalled, not to the person — the same
+  // 1% means different money on a 50k and a 100k account.
+  const { active: account, reload: reloadJournals } = useJournals()
 
   const [maxRisk, setMaxRisk] = useState('')
   const [pairs, setPairs] = useState('')
   const [maxTrades, setMaxTrades] = useState('')
   const [accountSize, setAccountSize] = useState('')
+  const [noWeekends, setNoWeekends] = useState(false)
   const [savingRules, setSavingRules] = useState(false)
 
   useEffect(() => {
-    if (!prefs) return
-    setMaxRisk(prefs.riskRules.maxRiskPerTradePct?.toString() ?? '')
-    setPairs((prefs.riskRules.allowedPairs ?? []).join(', '))
-    setMaxTrades(prefs.riskRules.maxTradesPerDay?.toString() ?? '')
-    setAccountSize(prefs.accountSize?.toString() ?? '')
-  }, [prefs])
+    setMaxRisk(account.riskRules.maxRiskPerTradePct?.toString() ?? '')
+    setPairs((account.riskRules.allowedPairs ?? []).join(', '))
+    setMaxTrades(account.riskRules.maxTradesPerDay?.toString() ?? '')
+    setAccountSize(account.accountSize?.toString() ?? '')
+    setNoWeekends(account.riskRules.noWeekendTrading === true)
+  }, [account])
 
   if (!profile || !prefs) return null
 
@@ -55,6 +61,7 @@ export function SettingsPage() {
   }
 
   const saveRules = async () => {
+    if (!user) return
     setSavingRules(true)
     try {
       const risk = Number.parseFloat(maxRisk)
@@ -65,18 +72,21 @@ export function SettingsPage() {
         .map((p) => p.trim().toUpperCase())
         .filter(Boolean)
 
-      await updatePrefs({
+      await updateJournal(user.uid, account.id, {
+        accountSize: Number.isFinite(size) && size > 0 ? size : undefined,
         riskRules: {
           ...(Number.isFinite(risk) && risk > 0 ? { maxRiskPerTradePct: risk } : {}),
           ...(allowed.length > 0 ? { allowedPairs: allowed } : {}),
           ...(Number.isFinite(cap) && cap > 0 ? { maxTradesPerDay: cap } : {}),
+          ...(noWeekends ? { noWeekendTrading: true } : {}),
         },
-        ...(Number.isFinite(size) && size > 0 ? { accountSize: size } : {}),
       })
-      toast.success('Rules updated', {
+      await reloadJournals()
+      toast.success(`Rules updated for ${account.name}`, {
         description: 'They apply to trades you log from now on.',
       })
-    } catch {
+    } catch (e) {
+      console.error('[settings] rules save failed:', e)
       toast.error("Couldn't save your rules")
     } finally {
       setSavingRules(false)
@@ -88,6 +98,8 @@ export function SettingsPage() {
   return (
     <div className="flex max-w-2xl flex-col gap-4 sm:gap-5">
       <PageTitle eyebrow="Settings" title="Preferences" />
+
+      <AccountsCard />
 
       {/* ---- entry detail level ---- */}
       <Card>
@@ -127,10 +139,10 @@ export function SettingsPage() {
       <Card>
         <CardHeader>
           <div>
-            <CardTitle>Your rules</CardTitle>
+            <CardTitle>Rules for {account.name}</CardTitle>
             <p className="mt-1 text-[13px] leading-relaxed text-ink-muted">
               We note when a trade falls outside these and show you the pattern in your
-              review. We never block a save.
+              review. We never block a save. Each account has its own set.
             </p>
           </div>
           <ShieldCheck className="size-4 shrink-0 text-ink-faint" aria-hidden />
@@ -149,15 +161,14 @@ export function SettingsPage() {
               )}
             </Field>
             <Field
-              label="Account size"
+              label="Account balance"
               optional
-              hint="Lets us turn a risk amount into a percentage."
+              hint="What risk percentages are measured against."
             >
               {(id) => (
                 <NumberInput
                   id={id}
-                  prefix="$"
-                  placeholder="10000"
+                  placeholder="50000"
                   value={accountSize}
                   onChange={(e) => setAccountSize(e.target.value)}
                 />
@@ -186,6 +197,25 @@ export function SettingsPage() {
               />
             )}
           </Field>
+
+          <Divider />
+
+          <label className="flex cursor-pointer items-start justify-between gap-4">
+            <span className="min-w-0">
+              <span className="block text-[13px] font-medium text-ink">
+                I don't trade weekends
+              </span>
+              <span className="mt-0.5 block text-[12px] leading-relaxed text-ink-muted">
+                Saturday and Sunday trades get noted in your review. Leave this off if
+                you trade crypto, which never closes.
+              </span>
+            </span>
+            <Switch
+              checked={noWeekends}
+              onCheckedChange={setNoWeekends}
+              aria-label="No weekend trading"
+            />
+          </label>
 
           <div>
             <Button variant="primary" size="sm" onClick={saveRules} disabled={savingRules}>
@@ -224,16 +254,25 @@ export function SettingsPage() {
 
           <Divider />
 
+          {/*
+            Currency is a property of the account, not the person — a trader
+            can run a USD prop account and a GBP personal one. Editing it here
+            too would give two controls that disagree, so this one only sets
+            the default a *new* account starts from.
+          */}
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="min-w-0">
-              <p className="text-[13px] font-medium text-ink">Currency</p>
-              <p className="mt-0.5 text-[12px] text-ink-muted">How P&amp;L is displayed.</p>
+              <p className="text-[13px] font-medium text-ink">Default currency</p>
+              <p className="mt-0.5 text-[12px] leading-relaxed text-ink-muted">
+                Used by new accounts. {account.name} is in {account.currency} — change
+                that under Accounts.
+              </p>
             </div>
             <Select
               value={prefs.currency ?? 'USD'}
               onValueChange={(v) => void updatePrefs({ currency: v })}
             >
-              <SelectTrigger className="w-32" aria-label="Currency">
+              <SelectTrigger className="w-32" aria-label="Default currency">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
