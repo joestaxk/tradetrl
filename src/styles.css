@@ -1,0 +1,290 @@
+@import 'tailwindcss';
+
+/* ============================================================================
+   tradetrl — design tokens
+   Dark-only. One considered palette, computationally validated for CVD
+   separation and contrast against the panel surface (#14161A):
+     win    #35A38C  jade       ΔE 9.8 (protan) vs loss — passes
+     loss   #DE6E52  clay
+     accent #7C83F0  periwinkle — never competes with win/loss
+   ========================================================================= */
+
+@theme {
+  /* ---- surfaces: elevation by border + subtle wash, not color blocking ---- */
+  --color-void: #08090b;
+  --color-base: #0b0d10;
+  --color-panel: #14161a;
+  --color-raised: #191c21;
+  --color-overlay: #1d2027;
+
+  --color-line: #23262d;
+  --color-line-strong: #2e323b;
+
+  /* ---- ink ---- */
+  --color-ink: #eceef2;
+  --color-ink-dim: #a2a8b4;
+  --color-ink-muted: #6e7480;
+  --color-ink-faint: #464b55;
+
+  /* ---- semantic: outcome ---- */
+  --color-win: #35a38c;
+  --color-win-bright: #4dbba3;
+  --color-win-dim: #2b7d6c;
+  --color-win-wash: #35a38c1f;
+  --color-win-edge: #35a38c3d;
+
+  --color-loss: #de6e52;
+  --color-loss-bright: #ea8168;
+  --color-loss-dim: #a95440;
+  --color-loss-wash: #de6e521f;
+  --color-loss-edge: #de6e523d;
+
+  --color-flat: #5d636f;
+  --color-flat-wash: #5d636f1a;
+
+  /* ---- brand accent: interactive only ---- */
+  --color-accent: #7c83f0;
+  --color-accent-bright: #949af5;
+  --color-accent-dim: #5a60c4;
+  --color-accent-wash: #7c83f01f;
+  --color-accent-edge: #7c83f04d;
+
+  /* ---- status (reserved, never reused as a series hue) ---- */
+  --color-caution: #d9a441;
+  --color-caution-wash: #d9a4411f;
+
+  /* ---- type ----
+     Display is Fraunces pinned to a LOW optical size. Fraunces' opsz axis
+     controls stroke contrast: high opsz is a lanky display cut with hairline
+     thins, low opsz is the sturdy text cut. We want its personality without
+     the lankiness, so the axis is fixed at 14 in the utility below. */
+  --font-display: 'Fraunces', 'Iowan Old Style', Georgia, serif;
+  --font-sans: 'Geist', 'Inter', ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-mono: 'Geist Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+
+  /* ---- motion ---- */
+  --ease-out-quint: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --ease-in-out-soft: cubic-bezier(0.65, 0, 0.35, 1);
+
+  --animate-rise: rise 0.5s var(--ease-out-quint) both;
+  --animate-fade: fade 0.35s var(--ease-out-quint) both;
+  --animate-scale-in: scale-in 0.2s var(--ease-out-quint);
+  --animate-shimmer: shimmer 1.6s linear infinite;
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes scale-in {
+  from {
+    opacity: 0;
+    transform: scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes shimmer {
+  from {
+    background-position: -200% 0;
+  }
+  to {
+    background-position: 200% 0;
+  }
+}
+/* Mobile dialogs enter as bottom sheets. */
+@keyframes sheet-up {
+  from {
+    opacity: 0;
+    transform: translateY(100%);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* ============================================================================
+   Base
+   ========================================================================= */
+
+@layer base {
+  :root {
+    color-scheme: dark;
+  }
+
+  *,
+  *::before,
+  *::after {
+    box-sizing: border-box;
+    border-color: var(--color-line);
+  }
+
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+
+  html,
+  body,
+  #app {
+    min-height: 100%;
+  }
+
+  body {
+    margin: 0;
+    background-color: var(--color-base);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    /* §12: zero horizontal scroll at any breakpoint */
+    overflow-x: hidden;
+  }
+
+  /* Every figure — PnL, prices, R, percentages — aligns in columns. */
+  .tnum {
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: 'tnum' 1;
+  }
+
+  h1,
+  h2,
+  h3 {
+    text-wrap: balance;
+  }
+
+  /*
+    Every display-face use goes through this, so the optical size is never
+    left at its default. `opsz 14` is the sturdy text cut; `SOFT 30` rounds
+    the terminals a touch; `WONK 1` keeps the distinctive angled leg on the
+    g and y that gives the face its character.
+  */
+  .font-display {
+    font-variation-settings:
+      'opsz' 14,
+      'SOFT' 30,
+      'WONK' 1;
+    font-weight: 600;
+    letter-spacing: -0.015em;
+  }
+  p {
+    text-wrap: pretty;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+
+  ::selection {
+    background: var(--color-accent-wash);
+    color: var(--color-ink);
+  }
+
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: var(--color-line-strong);
+    border-radius: 99px;
+    border: 3px solid var(--color-base);
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: var(--color-ink-faint);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}
+
+/* ============================================================================
+   Utilities
+   ========================================================================= */
+
+@utility grain {
+  position: relative;
+  isolation: isolate;
+  &::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    opacity: 0.04;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+}
+
+/* Soft gradient mesh — landing hero. Flat, not skeuomorphic. */
+@utility mesh {
+  background-image:
+    radial-gradient(60rem 32rem at 15% -10%, #7c83f01a, transparent 60%),
+    radial-gradient(45rem 28rem at 90% 0%, #35a38c14, transparent 62%),
+    radial-gradient(40rem 30rem at 50% 110%, #de6e5210, transparent 60%);
+}
+
+@utility panel {
+  background-color: var(--color-panel);
+  border: 1px solid var(--color-line);
+  border-radius: 14px;
+}
+
+@utility skeleton {
+  background: linear-gradient(
+    90deg,
+    var(--color-raised) 25%,
+    var(--color-overlay) 50%,
+    var(--color-raised) 75%
+  );
+  background-size: 200% 100%;
+  animation: var(--animate-shimmer);
+  border-radius: 6px;
+}
+
+/* Staggered reveal: children rise in sequence. Index set via --i. */
+@utility stagger {
+  animation: var(--animate-rise);
+  animation-delay: calc(var(--i, 0) * 55ms);
+}
+
+/*
+  Scroll-triggered reveal (landing). The section starts hidden ONLY while JS is
+  live enough to observe it — `data-revealed` is set by the observer, and the
+  no-JS / no-IntersectionObserver path leaves content fully visible rather than
+  stranding it at opacity 0.
+*/
+@utility reveal {
+  &[data-revealed='true'] > * {
+    animation: var(--animate-rise);
+  }
+}

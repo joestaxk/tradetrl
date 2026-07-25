@@ -1,0 +1,27 @@
+rules_version = '2';
+
+// A journal is private, always. Every document lives under users/{uid} and is
+// readable and writable only by that uid — there is no sharing surface, so
+// there is no rule that grants one.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isOwner(uid) {
+      return request.auth != null && request.auth.uid == uid;
+    }
+
+    match /users/{uid} {
+      allow read: if isOwner(uid);
+      allow create: if isOwner(uid);
+      // `plan` is an entitlement — the client may never grant itself Pro.
+      allow update: if isOwner(uid)
+        && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['plan'])
+            || request.resource.data.plan == resource.data.plan);
+      allow delete: if isOwner(uid);
+
+      match /{document=**} {
+        allow read, write: if isOwner(uid);
+      }
+    }
+  }
+}
