@@ -39,7 +39,7 @@ export const Route = createFileRoute('/api/cron/daily-checkin')({
           return json({ ok: false, error: 'Resend is not configured' }, 500)
         }
 
-        const db = getAdminDb()
+        const db = await getAdminDb()
         if (!db) {
           return json({ ok: false, error: 'Firebase Admin is not configured' }, 500)
         }

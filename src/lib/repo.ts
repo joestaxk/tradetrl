@@ -113,6 +113,7 @@ export async function loadUser(uid: string): Promise<UserDoc | null> {
     prefs: { ...DEFAULT_PREFS, ...(data.prefs ?? {}) },
     plan: data.plan === 'pro' ? 'pro' : 'free',
     activeJournalId: data.activeJournalId ?? DEFAULT_JOURNAL_ID,
+    feedback: data.feedback as UserDoc['feedback'],
   }
 }
 
@@ -181,6 +182,48 @@ export async function completeOnboarding(
     ),
     onboardedAt: Date.now(),
   })
+}
+
+/**
+ * Records a response, and the fact that one was given.
+ *
+ * The individual responses go into a subcollection rather than overwriting
+ * each other, so someone who sends three ideas over a year has all three —
+ * while `feedback.submittedAt` on the user doc is what silences the prompt.
+ */
+export async function saveFeedback(
+  uid: string,
+  input: {
+    mood?: 'love' | 'good' | 'meh' | 'bad'
+    note?: string
+    kind?: 'feedback' | 'idea'
+    dismissed?: boolean
+  },
+): Promise<void> {
+  const now = Date.now()
+
+  if (input.dismissed) {
+    await updateDoc(doc(db(), 'users', uid), { 'feedback.dismissedAt': now })
+    return
+  }
+
+  await setDoc(
+    doc(collection(db(), 'users', uid, 'feedback')),
+    clean({
+      mood: input.mood,
+      note: input.note,
+      kind: input.kind ?? 'feedback',
+      createdAt: serverTimestamp(),
+    }),
+  )
+
+  // An unprompted idea should never silence the one-time prompt.
+  if (input.kind !== 'idea') {
+    await updateDoc(doc(db(), 'users', uid), {
+      'feedback.submittedAt': now,
+      ...(input.mood ? { 'feedback.mood': input.mood } : {}),
+    })
+  }
 }
 
 export async function setPlan(uid: string, plan: 'free' | 'pro'): Promise<void> {

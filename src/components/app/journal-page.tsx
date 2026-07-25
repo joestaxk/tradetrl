@@ -7,11 +7,13 @@ import { EmptyState, PageTitle, Skeleton } from '#/components/ui/primitives'
 import { Tip } from '#/components/ui/overlays'
 import { MonthGrid } from '#/components/calendar/month-grid'
 import { OpenTrades } from '#/components/trades/open-trades'
+import { FeedbackCard } from '#/components/feedback/feedback-card'
 import { DayDetail } from '#/components/calendar/day-detail'
 import { ListView } from '#/components/list/list-view'
 import { useAppStore } from '#/store/app'
 import { useJournals } from '#/lib/use-journals'
 import { useTrades } from '#/lib/use-trades'
+import { useFeedback } from '#/lib/use-feedback'
 import { computeStats, tradesInRange } from '#/lib/aggregate'
 import { journalingStreak } from '#/lib/patterns'
 import { formatPct } from '#/lib/calc'
@@ -37,6 +39,7 @@ export function JournalPage() {
   }, [trades, anchorDay])
 
   const streak = useMemo(() => journalingStreak(trades, today()), [trades])
+  const feedback = useFeedback(trades)
 
   if (loading) return <JournalSkeleton />
 
@@ -154,6 +157,13 @@ export function JournalPage() {
           currency={currency}
           onSelectDay={openDay}
           onNewTrade={() => openNewTrade()}
+        />
+      )}
+
+      {feedback.ask && (
+        <FeedbackCard
+          onSubmit={(mood, note) => feedback.send(mood, note)}
+          onDismiss={() => void feedback.dismiss()}
         />
       )}
 

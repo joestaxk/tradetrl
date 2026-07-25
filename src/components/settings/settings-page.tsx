@@ -17,6 +17,9 @@ import { daysUntilExpiry } from '#/lib/session'
 import { flags } from '#/lib/env'
 import { CURRENCIES } from '#/lib/currencies'
 import { AccountsCard } from '#/components/settings/accounts-card'
+import { IdeaBox } from '#/components/feedback/idea-box'
+import { useFeedback } from '#/lib/use-feedback'
+import { useTrades } from '#/lib/use-trades'
 import { useJournals } from '#/lib/use-journals'
 import { updateJournal } from '#/lib/repo'
 import type { EntryDetailLevel } from '#/lib/types'
@@ -31,6 +34,8 @@ export function SettingsPage() {
   // Rules belong to the account being journalled, not to the person — the same
   // 1% means different money on a 50k and a 100k account.
   const { active: account, reload: reloadJournals } = useJournals()
+  const { trades } = useTrades()
+  const feedback = useFeedback(trades)
 
   const [maxRisk, setMaxRisk] = useState('')
   const [pairs, setPairs] = useState('')
@@ -319,6 +324,8 @@ export function SettingsPage() {
           )}
         </CardBody>
       </Card>
+
+      <IdeaBox onSend={(note) => feedback.send(undefined, note, 'idea')} />
 
       {/* ---- theme + session ---- */}
       <Card>

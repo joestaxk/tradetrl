@@ -1,11 +1,43 @@
 import * as LabelPrimitive from '@radix-ui/react-label'
 import { forwardRef, useId } from 'react'
+import { Tip } from './overlays'
 import { cn } from './cn'
+
+/**
+ * A small "?" that explains a field in one plain sentence.
+ *
+ * Trading UIs are full of jargon a beginner has no way to guess. Rather than
+ * padding every label with a paragraph, the explanation hides behind this and
+ * is written for someone who has never heard the word "pip".
+ */
+export function InfoTip({ label }: { label: React.ReactNode }) {
+  return (
+    <Tip label={label}>
+      <button
+        type="button"
+        // Not a submit button, and not a tab stop that fights the form — but
+        // still focusable, so keyboard users can read it too.
+        className={cn(
+          'inline-flex size-4 shrink-0 items-center justify-center rounded-full',
+          'border border-line-strong text-[9px] font-bold leading-none text-ink-faint',
+          'transition-colors duration-150 hover:border-accent hover:text-accent-bright',
+          'focus-visible:outline-none focus-visible:border-accent focus-visible:text-accent-bright',
+        )}
+        aria-label="What is this?"
+      >
+        ?
+      </button>
+    </Tip>
+  )
+}
 
 export const Label = forwardRef<
   React.ComponentRef<typeof LabelPrimitive.Root>,
-  React.ComponentPropsWithoutRef<typeof LabelPrimitive.Root> & { optional?: boolean }
->(function Label({ className, children, optional, ...props }, ref) {
+  React.ComponentPropsWithoutRef<typeof LabelPrimitive.Root> & {
+    optional?: boolean
+    tip?: React.ReactNode
+  }
+>(function Label({ className, children, optional, tip, ...props }, ref) {
   return (
     <LabelPrimitive.Root
       ref={ref}
@@ -17,6 +49,7 @@ export const Label = forwardRef<
       {...props}
     >
       {children}
+      {tip && <InfoTip label={tip} />}
       {/*
         Optionality is a first-class visual signal in this product: the whole
         premise is that almost nothing is required, and the form should say so
@@ -102,6 +135,8 @@ export const NumberInput = forwardRef<
 export interface FieldProps {
   label: React.ReactNode
   optional?: boolean
+  /** One plain sentence, written for someone new to trading. */
+  tip?: React.ReactNode
   hint?: React.ReactNode
   error?: string | null
   children: (id: string) => React.ReactNode
@@ -109,11 +144,11 @@ export interface FieldProps {
 }
 
 /** Label + control + hint, wired with a generated id so the label always hits. */
-export function Field({ label, optional, hint, error, children, className }: FieldProps) {
+export function Field({ label, optional, tip, hint, error, children, className }: FieldProps) {
   const id = useId()
   return (
     <div className={cn('flex flex-col gap-1.5', className)}>
-      <Label htmlFor={id} optional={optional}>
+      <Label htmlFor={id} optional={optional} tip={tip}>
         {label}
       </Label>
       {children(id)}

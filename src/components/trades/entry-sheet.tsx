@@ -503,7 +503,11 @@ export function TradeEntrySheet() {
               }
             </Field>
             {isOpen ? (
-              <Field label="Target" optional hint="Where you're aiming.">
+              <Field
+              label="Target"
+              optional
+              tip="The price you're hoping to close at for a profit."
+            >
                 {(id) => (
                   <NumberInput
                     id={id}
@@ -576,7 +580,7 @@ export function TradeEntrySheet() {
             <Field
               label="Time"
               optional
-              hint="Powers the session breakdown and hold time."
+              tip="Roughly when you opened it. Lets us show which session you trade best."
             >
               {(id) => (
                 <Input
@@ -661,7 +665,11 @@ export function TradeEntrySheet() {
               ) : (
                 <div className="flex flex-col gap-4">
                   <div className="grid grid-cols-2 gap-3">
-                    <Field label="Lot size" optional>
+                    <Field
+                      label="Lot size"
+                      optional
+                      tip="How big the trade is. Bigger size means every point of movement is worth more money."
+                    >
                       {(id) => (
                         <NumberInput
                           id={id}
@@ -671,7 +679,11 @@ export function TradeEntrySheet() {
                         />
                       )}
                     </Field>
-                    <Field label="Risk" optional hint="Or let the levels below fill it in.">
+                    <Field
+              label="Risk"
+              optional
+              tip="The most you're willing to lose on this trade. Leave it blank and we work it out from your stop."
+            >
                       {(id) => (
                         <NumberInput
                           id={id}
@@ -703,7 +715,11 @@ export function TradeEntrySheet() {
                   )}
 
                   <div className="grid grid-cols-3 gap-2 sm:gap-3">
-                    <Field label="Entry" optional>
+                    <Field
+                      label="Entry"
+                      optional
+                      tip="The price you got in at."
+                    >
                       {(id) => (
                         <NumberInput
                           id={id}
@@ -713,7 +729,11 @@ export function TradeEntrySheet() {
                         />
                       )}
                     </Field>
-                    <Field label="Exit" optional>
+                    <Field
+                      label="Exit"
+                      optional
+                      tip="The price you actually closed at."
+                    >
                       {(id) => (
                         <NumberInput
                           id={id}
@@ -723,7 +743,11 @@ export function TradeEntrySheet() {
                         />
                       )}
                     </Field>
-                    <Field label="Stop" optional>
+                    <Field
+                      label="Stop"
+                      optional
+                      tip="The price where you'd give up and close for a loss. This is what tells us your risk."
+                    >
                       {(id) => (
                         <NumberInput
                           id={id}
@@ -745,6 +769,7 @@ export function TradeEntrySheet() {
                     currency={accountCurrency}
                     maxRiskPct={maxRiskPct}
                     suggestedLots={suggestedLots}
+                    suggestedRisk={riskBudgetFrom(account.accountSize, maxRiskPct)}
                     onUseSuggested={(lots) => set('lotSize', String(lots))}
                     rateFetchedAt={fx.fetchedAt}
                     rateStale={fx.stale}
@@ -827,7 +852,8 @@ export function TradeEntrySheet() {
           <Field
             label="Why did you take this?"
             optional
-            hint="A sentence is plenty. This is the bit you'll thank yourself for in a month."
+            tip="Your reason for taking it. One sentence is plenty."
+            hint="This is the bit you'll thank yourself for in a month."
           >
             {(id) => (
               <Textarea
@@ -840,7 +866,12 @@ export function TradeEntrySheet() {
             )}
           </Field>
 
-          <Field label="Tags" optional hint="Comma separated. Used for per-setup win rates.">
+          <Field
+            label="Tags"
+            optional
+            tip="Short labels like 'breakout' or 'london'. We then show which of your setups actually wins."
+            hint="Separate them with commas."
+          >
             {(id) => (
               <div className="relative">
                 <Tag

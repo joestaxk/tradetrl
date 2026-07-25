@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AppRouteImport } from './routes/app'
 import { Route as PreviewRouteImport } from './routes/preview'
+import { Route as ApiFeedbackRouteImport } from './routes/api.feedback'
 import { Route as ApiFxRateRouteImport } from './routes/api.fx-rate'
 import { Route as AppIndexRouteImport } from './routes/app.index'
 import { Route as AppInsightsRouteImport } from './routes/app.insights'
@@ -32,6 +33,11 @@ const AppRoute = AppRouteImport.update({
 const PreviewRoute = PreviewRouteImport.update({
   id: '/preview',
   path: '/preview',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiFeedbackRoute = ApiFeedbackRouteImport.update({
+  id: '/api/feedback',
+  path: '/api/feedback',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiFxRateRoute = ApiFxRateRouteImport.update({
@@ -69,6 +75,7 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/app': typeof AppRouteWithChildren
   '/preview': typeof PreviewRoute
+  '/api/feedback': typeof ApiFeedbackRoute
   '/api/fx-rate': typeof ApiFxRateRoute
   '/app/insights': typeof AppInsightsRoute
   '/app/review': typeof AppReviewRoute
@@ -79,6 +86,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/preview': typeof PreviewRoute
+  '/api/feedback': typeof ApiFeedbackRoute
   '/api/fx-rate': typeof ApiFxRateRoute
   '/app/insights': typeof AppInsightsRoute
   '/app/review': typeof AppReviewRoute
@@ -91,6 +99,7 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/app': typeof AppRouteWithChildren
   '/preview': typeof PreviewRoute
+  '/api/feedback': typeof ApiFeedbackRoute
   '/api/fx-rate': typeof ApiFxRateRoute
   '/app/insights': typeof AppInsightsRoute
   '/app/review': typeof AppReviewRoute
@@ -104,6 +113,7 @@ export interface FileRouteTypes {
     | '/'
     | '/app'
     | '/preview'
+    | '/api/feedback'
     | '/api/fx-rate'
     | '/app/insights'
     | '/app/review'
@@ -114,6 +124,7 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/preview'
+    | '/api/feedback'
     | '/api/fx-rate'
     | '/app/insights'
     | '/app/review'
@@ -125,6 +136,7 @@ export interface FileRouteTypes {
     | '/'
     | '/app'
     | '/preview'
+    | '/api/feedback'
     | '/api/fx-rate'
     | '/app/insights'
     | '/app/review'
@@ -137,6 +149,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AppRoute: typeof AppRouteWithChildren
   PreviewRoute: typeof PreviewRoute
+  ApiFeedbackRoute: typeof ApiFeedbackRoute
   ApiFxRateRoute: typeof ApiFxRateRoute
   ApiCronDailyCheckinRoute: typeof ApiCronDailyCheckinRoute
 }
@@ -162,6 +175,13 @@ declare module '@tanstack/react-router' {
       path: '/preview'
       fullPath: '/preview'
       preLoaderRoute: typeof PreviewRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/feedback': {
+      id: '/api/feedback'
+      path: '/api/feedback'
+      fullPath: '/api/feedback'
+      preLoaderRoute: typeof ApiFeedbackRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/fx-rate': {
@@ -229,6 +249,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AppRoute: AppRouteWithChildren,
   PreviewRoute: PreviewRoute,
+  ApiFeedbackRoute: ApiFeedbackRoute,
   ApiFxRateRoute: ApiFxRateRoute,
   ApiCronDailyCheckinRoute: ApiCronDailyCheckinRoute,
 }

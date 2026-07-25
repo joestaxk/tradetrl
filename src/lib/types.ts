@@ -65,6 +65,14 @@ export interface UserPrefs {
   themeLock: 'dark'
 }
 
+export interface FeedbackState {
+  /** Set once they answer. We never ask again after this. */
+  submittedAt?: number
+  /** Set when they close the card without answering. */
+  dismissedAt?: number
+  mood?: 'love' | 'good' | 'meh' | 'bad'
+}
+
 export interface UserDoc {
   uid: string
   displayName: string | null
@@ -78,6 +86,7 @@ export interface UserDoc {
   plan: 'free' | 'pro'
   /** Multiple journals (Pro). Free users have exactly one, id 'default'. */
   activeJournalId: string
+  feedback?: FeedbackState
 }
 
 /**
