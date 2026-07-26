@@ -14,7 +14,7 @@
  * writes; duplicating that here would only fight it.
  */
 
-const VERSION = 'v1'
+const VERSION = 'v2'
 const ASSETS = `tradetrl-assets-${VERSION}`
 const SHELL = `tradetrl-shell-${VERSION}`
 const OFFLINE_URL = '/offline.html'
@@ -39,7 +39,16 @@ self.addEventListener('activate', (event) => {
             .map((k) => caches.delete(k)),
         ),
       )
-      .then(() => self.clients.claim()),
+      .then(() => self.clients.claim())
+      // Tell every open page that the assets under it have changed, so an
+      // installed PWA picks up a deploy instead of running on chunks that no
+      // longer exist on the server.
+      .then(async () => {
+        const clients = await self.clients.matchAll({ type: 'window' })
+        for (const client of clients) {
+          client.postMessage({ type: 'sw-activated', version: VERSION })
+        }
+      }),
   )
 })
 
@@ -73,7 +82,17 @@ self.addEventListener('fetch', (event) => {
     return
   }
 
-  // Build assets are content-hashed, so a hit is always correct.
+  /*
+    Build assets are content-hashed, so a cache hit is always correct for the
+    exact file requested.
+
+    The important part is what happens on a *miss*. After a deploy the old
+    chunks are gone from the server, so a page loaded before the deploy asks
+    for a filename that now 404s. We must not cache that 404 — and we must let
+    it reach the app as a failure so the stale-build watcher can reload onto
+    the current version. Swallowing it here would leave a permanently broken
+    screen with no way out.
+  */
   if (url.origin === self.location.origin && url.pathname.startsWith('/assets/')) {
     event.respondWith(
       caches.match(request).then(

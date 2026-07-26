@@ -4,6 +4,7 @@ import { Toaster } from '#/components/ui/toast'
 import { AuthProvider } from '#/lib/auth'
 import { NotFound } from '#/components/app/not-found'
 import { registerServiceWorker } from '#/lib/use-pwa'
+import { watchForStaleBuild } from '#/lib/stale-build'
 import appCss from '../styles.css?url'
 
 export const Route = createRootRoute({
@@ -49,6 +50,9 @@ export const Route = createRootRoute({
 })
 
 registerServiceWorker()
+// Must run before any route chunk is requested, so a deploy that happened
+// while the app was open recovers itself instead of breaking the screen.
+watchForStaleBuild()
 
 function RootDocument({ children }: { children: React.ReactNode }) {
   return (

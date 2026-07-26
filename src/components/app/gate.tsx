@@ -3,7 +3,9 @@ import { NotConfigured, SignIn } from '#/components/app/sign-in'
 import { Onboarding } from '#/components/app/onboarding'
 import { AppShell } from '#/components/app/shell'
 import { TradeEntrySheet } from '#/components/trades/entry-sheet'
+import { useEffect } from 'react'
 import { useAuth } from '#/lib/auth'
+import { clearStaleBuildGuard } from '#/lib/stale-build'
 
 /**
  * The one place that decides what an authenticated route renders.
@@ -13,6 +15,15 @@ import { useAuth } from '#/lib/auth'
  */
 export function AuthGate({ children }: { children: React.ReactNode }) {
   const { status, onboarded } = useAuth()
+
+  /*
+    Reaching a real screen means this build works, so the one-reload guard is
+    released. Without this, a deploy months from now would find the guard
+    still set from a previous recovery and refuse to reload.
+  */
+  useEffect(() => {
+    if (status === 'signed-in' || status === 'signed-out') clearStaleBuildGuard()
+  }, [status])
 
   if (status === 'unconfigured') return <NotConfigured />
   if (status === 'loading') return <BootSkeleton />
