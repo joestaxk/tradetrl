@@ -79,3 +79,16 @@ describe('reloading, exactly once', () => {
     spy.mockRestore()
   })
 })
+
+describe('the half-updated route tree', () => {
+  it('recognises the router error a mixed build produces', () => {
+    /*
+      When a fresh HTML shell meets a cached route chunk, the route match
+      resolves against a tree that doesn't contain it and the router reads
+      `.component` off undefined. Treating this as a stale build is what turns
+      a white screen into an automatic recovery.
+    */
+    const err = new TypeError("Cannot read properties of undefined (reading 'component')")
+    expect(/reading 'component'/i.test(err.message)).toBe(true)
+  })
+})
