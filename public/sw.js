@@ -67,6 +67,14 @@ self.addEventListener('fetch', (event) => {
   */
   if (request.mode !== 'navigate') return
 
+  /*
+    The Firebase auth handler is proxied through this origin, which makes it a
+    same-origin navigation and therefore something this worker would otherwise
+    intercept. Sign-in must never route through a service worker — an offline
+    fallback served mid-OAuth would strand the user with a half-finished login.
+  */
+  if (new URL(request.url).pathname.startsWith('/__/auth')) return
+
   event.respondWith(
     fetch(request).catch(async () => {
       const cached = await caches.match(OFFLINE_URL)
