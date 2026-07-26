@@ -17,6 +17,7 @@ import { daysUntilExpiry } from '#/lib/session'
 import { flags } from '#/lib/env'
 import { CURRENCIES } from '#/lib/currencies'
 import { AccountsCard } from '#/components/settings/accounts-card'
+import { InstallCard } from '#/components/settings/install-card'
 import { IdeaBox } from '#/components/feedback/idea-box'
 import { useFeedback } from '#/lib/use-feedback'
 import { useTrades } from '#/lib/use-trades'
@@ -103,6 +104,8 @@ export function SettingsPage() {
   return (
     <div className="flex max-w-2xl flex-col gap-4 sm:gap-5">
       <PageTitle eyebrow="Settings" title="Preferences" />
+
+      <InstallCard />
 
       <AccountsCard />
 

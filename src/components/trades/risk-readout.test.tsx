@@ -4,7 +4,7 @@ import userEvent from '@testing-library/user-event'
 import { RiskReadout } from './risk-readout'
 import { PairCombobox } from './pair-combobox'
 import { TooltipProvider } from '#/components/ui/overlays'
-import { computeRisk } from '#/lib/risk'
+import { computeRisk, type RiskResult } from '#/lib/risk'
 
 const wrap = (ui: React.ReactNode) =>
   render(<TooltipProvider delayDuration={0}>{ui}</TooltipProvider>)
@@ -60,12 +60,12 @@ describe('RiskReadout — §6, observe never gate', () => {
 
   it('warms up once the trader passes their own limit', () => {
     wrap(<RiskReadout result={risk({ lotSize: 2 })} maxRiskPct={1} />)
-    expect(screen.getByText(/Above the 1% you set for yourself/)).toBeInTheDocument()
+    expect(screen.getByText(/more than the 1% you set for yourself/)).toBeInTheDocument()
   })
 
   it('names the size that would keep them inside it', () => {
     wrap(<RiskReadout result={risk({ lotSize: 2 })} maxRiskPct={1} suggestedLots={0.5} />)
-    expect(screen.getByText(/0\.5 lots would keep you inside it/)).toBeInTheDocument()
+    expect(screen.getByText(/use 0\.5 lots to stay inside it/i)).toBeInTheDocument()
   })
 
   it('offers the fix as one tap, and never as a block', () => {
@@ -80,7 +80,7 @@ describe('RiskReadout — §6, observe never gate', () => {
     )
     // Nothing in the readout is disabled — it is a suggestion, not a gate.
     for (const b of screen.getAllByRole('button')) expect(b).not.toBeDisabled()
-    return userEvent.click(screen.getByRole('button', { name: /size it to 0\.5 lots/i })).then(() => {
+    return userEvent.click(screen.getByRole('button', { name: /use 0\.5 lots instead/i })).then(() => {
       expect(onUse).toHaveBeenCalledWith(0.5)
     })
   })
@@ -110,22 +110,22 @@ describe('RiskReadout — honest blank states', () => {
     wrap(<RiskReadout result={computeRisk({ pair: '' })} />)
     expect(screen.getByText(/pick a pair/i)).toBeInTheDocument()
     // It must not claim we lack specs for an instrument never chosen.
-    expect(screen.queryByText(/contract specs/i)).not.toBeInTheDocument()
+    expect(screen.queryByText(/don.t know this one yet/i)).not.toBeInTheDocument()
   })
 
   it('asks for the levels once a pair is chosen', () => {
     wrap(<RiskReadout result={computeRisk({ pair: 'EURUSD' })} />)
-    expect(screen.getByText(/add an entry and a stop/i)).toBeInTheDocument()
+    expect(screen.getByText(/where you get in and where your stop goes/i)).toBeInTheDocument()
   })
 
-  it('asks only for the lot size when the levels are already in', () => {
+  it('points at the missing balance when it cannot size the trade for them', () => {
     wrap(<RiskReadout result={risk({ lotSize: undefined })} />)
-    expect(screen.getByText(/add a lot size/i)).toBeInTheDocument()
+    expect(screen.getByText(/account balance in settings/i)).toBeInTheDocument()
   })
 
   it('explains manual mode for an uncurated symbol', () => {
     wrap(<RiskReadout result={computeRisk({ pair: 'US30', entryPrice: 39_000, stopPrice: 38_900 })} />)
-    expect(screen.getByText(/don't have contract specs/i)).toBeInTheDocument()
+    expect(screen.getByText(/don.t know this one yet/i)).toBeInTheDocument()
   })
 
   it('says the trade still saves when a rate is missing', () => {
@@ -145,12 +145,12 @@ describe('RiskReadout — provenance', () => {
         result={risk({ pair: 'XAUUSD', entryPrice: 2400, stopPrice: 2395, lotSize: 0.2 })}
       />,
     )
-    expect(screen.getByText(/confirm against your broker/i)).toBeInTheDocument()
+    expect(screen.getByText(/check it matches your broker/i)).toBeInTheDocument()
   })
 
   it('does not caveat forex, whose contract sizes are standard', () => {
     wrap(<RiskReadout result={risk()} />)
-    expect(screen.queryByText(/confirm against your broker/i)).not.toBeInTheDocument()
+    expect(screen.queryByText(/check it matches your broker/i)).not.toBeInTheDocument()
   })
 
   it('says when the rate came from the price itself', () => {
@@ -238,3 +238,79 @@ describe('PairCombobox', () => {
     expect(onCustom).toHaveBeenCalled()
   })
 })
+
+describe('RiskReadout — sizing the trade for them', () => {
+  /**
+   * The behaviour this file previously got wrong: with a stop but no lot size
+   * the readout said nothing, so the calculator only worked once you had
+   * already done the hard part yourself.
+   */
+  it('names the size to trade once it knows the stop, before any lot size', () => {
+    render(
+      <RiskReadout
+        result={blank({ pair: 'EURUSD' })}
+        currency="USD"
+        maxRiskPct={1}
+        suggestedLots={0.5}
+        suggestedRisk={100}
+      />,
+    )
+    expect(screen.getByText('0.5')).toBeInTheDocument()
+    expect(screen.getByText(/lots/i)).toBeInTheDocument()
+  })
+
+  it('says in money what that size would cost if the stop is hit', () => {
+    render(
+      <RiskReadout
+        result={blank({ pair: 'EURUSD' })}
+        currency="USD"
+        maxRiskPct={1}
+        suggestedLots={0.5}
+        suggestedRisk={100}
+      />,
+    )
+    expect(screen.getByText(/if your stop is hit you lose/i)).toBeInTheDocument()
+    expect(screen.getByText('$100.00')).toBeInTheDocument()
+  })
+
+  it('offers the size as one tap, never as a requirement', async () => {
+    const onUse = vi.fn()
+    render(
+      <RiskReadout
+        result={blank({ pair: 'EURUSD' })}
+        currency="USD"
+        maxRiskPct={1}
+        suggestedLots={0.5}
+        suggestedRisk={100}
+        onUseSuggested={onUse}
+      />,
+    )
+    await userEvent.click(screen.getByRole('button', { name: /use 0\.5 lots/i }))
+    expect(onUse).toHaveBeenCalledWith(0.5)
+  })
+
+  it('falls back to asking for the levels when it has nothing to suggest', () => {
+    render(<RiskReadout result={blank({ pair: 'EURUSD' })} currency="USD" />)
+    expect(
+      screen.getByText(/where you get in and where your stop goes/i),
+    ).toBeInTheDocument()
+  })
+})
+
+/** A result with no risk computed yet — the state before a lot size exists. */
+function blank(over: Partial<RiskResult> = {}): RiskResult {
+  return {
+    pair: '',
+    mode: 'curated',
+    instrument: null,
+    pipValuePerLot: null,
+    stopDistancePips: null,
+    riskAmount: null,
+    riskPct: null,
+    needsConversion: false,
+    missingRate: false,
+    rateSource: 'none',
+    pipValueUsed: null,
+    ...over,
+  }
+}

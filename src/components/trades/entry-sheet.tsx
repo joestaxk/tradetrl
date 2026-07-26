@@ -449,7 +449,8 @@ export function TradeEntrySheet() {
               <SegmentedShell className="w-full">
                 <SegmentedItem value="open">
                   <Hourglass aria-hidden className="size-3.5" />
-                  Still open
+                  <span className="hidden sm:inline">Still open</span>
+                  <span className="sm:hidden">Open</span>
                 </SegmentedItem>
                 <SegmentedItem value="win" tone="win">
                   <TrendingUp aria-hidden className="size-3.5" />
@@ -573,7 +574,7 @@ export function TradeEntrySheet() {
                   type="date"
                   value={form.date}
                   onChange={(e) => set('date', e.target.value)}
-                  className="[&::-webkit-calendar-picker-indicator]:opacity-50 [&::-webkit-calendar-picker-indicator]:invert"
+                  className="px-2 text-[15px] sm:px-3 sm:text-sm [&::-webkit-calendar-picker-indicator]:opacity-50 [&::-webkit-calendar-picker-indicator]:invert"
                 />
               )}
             </Field>
@@ -588,7 +589,7 @@ export function TradeEntrySheet() {
                   type="time"
                   value={form.time}
                   onChange={(e) => set('time', e.target.value)}
-                  className="[&::-webkit-calendar-picker-indicator]:opacity-50 [&::-webkit-calendar-picker-indicator]:invert"
+                  className="px-2 text-[15px] sm:px-3 sm:text-sm [&::-webkit-calendar-picker-indicator]:opacity-50 [&::-webkit-calendar-picker-indicator]:invert"
                 />
               )}
             </Field>
@@ -605,7 +606,7 @@ export function TradeEntrySheet() {
                       type="date"
                       value={form.closeDate}
                       onChange={(e) => set('closeDate', e.target.value)}
-                      className="[&::-webkit-calendar-picker-indicator]:opacity-50 [&::-webkit-calendar-picker-indicator]:invert"
+                      className="px-2 text-[15px] sm:px-3 sm:text-sm [&::-webkit-calendar-picker-indicator]:opacity-50 [&::-webkit-calendar-picker-indicator]:invert"
                     />
                   )}
                 </Field>
@@ -616,7 +617,7 @@ export function TradeEntrySheet() {
                       type="time"
                       value={form.closeTime}
                       onChange={(e) => set('closeTime', e.target.value)}
-                      className="[&::-webkit-calendar-picker-indicator]:opacity-50 [&::-webkit-calendar-picker-indicator]:invert"
+                      className="px-2 text-[15px] sm:px-3 sm:text-sm [&::-webkit-calendar-picker-indicator]:opacity-50 [&::-webkit-calendar-picker-indicator]:invert"
                     />
                   )}
                 </Field>

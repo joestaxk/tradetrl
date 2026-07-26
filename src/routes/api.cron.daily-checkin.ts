@@ -22,6 +22,16 @@ export const Route = createFileRoute('/api/cron/daily-checkin')({
       GET: async ({ request }) => {
         const secret = process.env.CRON_SECRET
         const auth = request.headers.get('authorization')
+        const url = new URL(request.url)
+        /*
+          `?dry=1` runs the whole job and reports exactly who would be emailed
+          and what the subject line would be, without calling Resend. It is the
+          only honest way to confirm a deployment is wired up correctly —
+          otherwise the first real test is a live send to real users.
+        */
+        const dryRun = url.searchParams.get('dry') === '1'
+        // Lets you check a specific day rather than waiting for one to happen.
+        const dateOverride = url.searchParams.get('date') ?? undefined
 
         // Without a secret configured we refuse rather than run openly — an
         // unauthenticated endpoint that sends mail is a spam cannon.
@@ -35,8 +45,15 @@ export const Route = createFileRoute('/api/cron/daily-checkin')({
         const apiKey = process.env.RESEND_API_KEY
         const from = process.env.RESEND_FROM
         const appUrl = process.env.APP_URL ?? 'https://tradetrl.app'
-        if (!apiKey || !from) {
-          return json({ ok: false, error: 'Resend is not configured' }, 500)
+        if (!dryRun && (!apiKey || !from)) {
+          return json(
+            {
+              ok: false,
+              error:
+                'Resend is not configured. Set RESEND_API_KEY and RESEND_FROM (the from address must be on a domain you have verified in Resend).',
+            },
+            500,
+          )
         }
 
         const db = await getAdminDb()
@@ -44,7 +61,7 @@ export const Route = createFileRoute('/api/cron/daily-checkin')({
           return json({ ok: false, error: 'Firebase Admin is not configured' }, 500)
         }
 
-        const date = todayUtc()
+        const date = dateOverride ?? todayUtc()
         const optedIn = await db
           .collection('users')
           .where('prefs.emailCheckInOptIn', '==', true)
@@ -53,6 +70,7 @@ export const Route = createFileRoute('/api/cron/daily-checkin')({
         let sent = 0
         let skipped = 0
         const failures: string[] = []
+        const wouldSend: { to: string; subject: string }[] = []
 
         for (const doc of optedIn.docs) {
           const user = doc.data() as {
@@ -89,6 +107,12 @@ export const Route = createFileRoute('/api/cron/daily-checkin')({
               continue
             }
 
+            if (dryRun) {
+              wouldSend.push({ to: user.email, subject: content.subject })
+              sent++
+              continue
+            }
+
             const res = await fetch('https://api.resend.com/emails', {
               method: 'POST',
               headers: {
@@ -112,7 +136,21 @@ export const Route = createFileRoute('/api/cron/daily-checkin')({
           }
         }
 
-        return json({ ok: true, date, sent, skipped, failures })
+        return json({
+          ok: true,
+          dryRun,
+          date,
+          sent,
+          skipped,
+          failures,
+          ...(dryRun
+            ? {
+                wouldSend,
+                resendConfigured: Boolean(apiKey && from),
+                from: from ?? null,
+              }
+            : {}),
+        })
       },
     },
   },

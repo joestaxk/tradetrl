@@ -33,9 +33,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     <div className="grain flex min-h-dvh flex-col">
       <header className="sticky top-0 z-30 border-b border-line bg-base/85 backdrop-blur-xl">
         <div className="mx-auto flex h-14 w-full max-w-6xl items-center gap-3 px-4 sm:px-6">
-          <Link to="/app" className="shrink-0" aria-label="tradetrl home">
-            <Wordmark className="hidden sm:flex" />
-            <Wordmark className="sm:hidden [&>span:last-child]:hidden" />
+          <Link to="/app" className="flex shrink-0 items-center" aria-label="tradetrl home">
+            <Wordmark />
           </Link>
 
           {/* Desktop nav. On mobile this moves to the bottom bar below. */}
@@ -74,7 +73,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               <DropdownTrigger asChild>
                 <button
                   className={cn(
-                    'flex size-9 shrink-0 items-center justify-center overflow-hidden rounded-full',
+                    'flex size-9 min-w-9 shrink-0 grow-0 basis-9 aspect-square self-center',
+                    'items-center justify-center overflow-hidden rounded-full',
                     'border border-line-strong bg-raised text-[13px] font-medium text-ink-dim',
                     'transition-colors duration-200 hover:border-ink-faint hover:text-ink',
                   )}

@@ -19,13 +19,21 @@ export const TooltipTrigger = TooltipPrimitive.Trigger
 export const TooltipContent = forwardRef<
   React.ComponentRef<typeof TooltipPrimitive.Content>,
   React.ComponentPropsWithoutRef<typeof TooltipPrimitive.Content>
->(function TooltipContent({ className, sideOffset = 6, ...props }, ref) {
+>(function TooltipContent(
+  { className, sideOffset = 6, collisionPadding = 12, ...props },
+  ref,
+) {
   return (
     <TooltipPrimitive.Portal>
       <TooltipPrimitive.Content
         ref={ref}
         sideOffset={sideOffset}
-        className={cn(surface, 'max-w-64 px-2.5 py-1.5 text-xs leading-relaxed text-ink-dim', className)}
+        collisionPadding={collisionPadding}
+        className={cn(
+          surface,
+          'max-w-[min(16rem,calc(100vw-1.5rem))] px-2.5 py-1.5 text-xs leading-relaxed text-ink-dim',
+          className,
+        )}
         {...props}
       />
     </TooltipPrimitive.Portal>
@@ -59,14 +67,22 @@ export const PopoverAnchor = PopoverPrimitive.Anchor
 export const PopoverContent = forwardRef<
   React.ComponentRef<typeof PopoverPrimitive.Content>,
   React.ComponentPropsWithoutRef<typeof PopoverPrimitive.Content>
->(function PopoverContent({ className, align = 'center', sideOffset = 6, ...props }, ref) {
+>(function PopoverContent(
+  { className, align = 'center', sideOffset = 6, collisionPadding = 12, ...props },
+  ref,
+) {
   return (
     <PopoverPrimitive.Portal>
       <PopoverPrimitive.Content
         ref={ref}
         align={align}
         sideOffset={sideOffset}
-        className={cn(surface, 'w-72 max-w-[calc(100vw-2rem)] p-3.5 outline-none', className)}
+        collisionPadding={collisionPadding}
+        className={cn(
+          surface,
+          'w-72 max-w-[calc(100vw-1.5rem)] p-3.5 outline-none',
+          className,
+        )}
         {...props}
       />
     </PopoverPrimitive.Portal>

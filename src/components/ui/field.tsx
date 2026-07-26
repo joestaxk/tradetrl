@@ -1,33 +1,45 @@
 import * as LabelPrimitive from '@radix-ui/react-label'
 import { forwardRef, useId } from 'react'
-import { Tip } from './overlays'
+import { Popover, PopoverContent, PopoverTrigger } from './overlays'
 import { cn } from './cn'
 
 /**
- * A small "?" that explains a field in one plain sentence.
+ * The "?" that opens a field's explanation.
  *
- * Trading UIs are full of jargon a beginner has no way to guess. Rather than
- * padding every label with a paragraph, the explanation hides behind this and
- * is written for someone who has never heard the word "pip".
+ * The geometry here is load-bearing. As a flex child this button was being
+ * squeezed narrower than its own width while `align-items: stretch` pulled it
+ * taller — a 16px circle rendering as a tall oval. `shrink-0` alone does not
+ * prevent that: an explicit `min-w`, `aspect-square` and `self-center` do,
+ * because a min-width floor cannot be overridden by flex shrinking and
+ * self-center stops the row's height from stretching it.
  */
 export function InfoTip({ label }: { label: React.ReactNode }) {
   return (
-    <Tip label={label}>
-      <button
-        type="button"
-        // Not a submit button, and not a tab stop that fights the form — but
-        // still focusable, so keyboard users can read it too.
-        className={cn(
-          'inline-flex size-4 shrink-0 items-center justify-center rounded-full',
-          'border border-line-strong text-[9px] font-bold leading-none text-ink-faint',
-          'transition-colors duration-150 hover:border-accent hover:text-accent-bright',
-          'focus-visible:outline-none focus-visible:border-accent focus-visible:text-accent-bright',
-        )}
-        aria-label="What is this?"
+    <Popover>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          aria-label="What is this?"
+          className={cn(
+            'inline-flex size-4 min-w-4 shrink-0 grow-0 basis-4 self-center aspect-square',
+            'items-center justify-center rounded-full',
+            'border border-line-strong text-[9px] font-bold leading-none text-ink-faint',
+            'transition-colors duration-150 hover:border-accent hover:text-accent-bright',
+            'focus-visible:outline-none focus-visible:border-accent focus-visible:text-accent-bright',
+            'data-[state=open]:border-accent data-[state=open]:text-accent-bright',
+          )}
+        >
+          ?
+        </button>
+      </PopoverTrigger>
+      <PopoverContent
+        side="top"
+        align="center"
+        className="w-[min(17rem,calc(100vw-1.5rem))] p-3 text-[13px] leading-relaxed text-ink-dim"
       >
-        ?
-      </button>
-    </Tip>
+        {label}
+      </PopoverContent>
+    </Popover>
   )
 }
 
@@ -42,13 +54,13 @@ export const Label = forwardRef<
     <LabelPrimitive.Root
       ref={ref}
       className={cn(
-        'flex items-center gap-2 text-[13px] font-medium text-ink-dim',
+        'flex min-w-0 items-center gap-1.5 text-[13px] font-medium text-ink-dim',
         'peer-disabled:opacity-50',
         className,
       )}
       {...props}
     >
-      {children}
+      <span className="truncate">{children}</span>
       {tip && <InfoTip label={tip} />}
       {/*
         Optionality is a first-class visual signal in this product: the whole
@@ -56,7 +68,7 @@ export const Label = forwardRef<
         out loud rather than leaving the trader to guess.
       */}
       {optional && (
-        <span className="text-[11px] font-normal tracking-wide text-ink-faint uppercase">
+        <span className="hidden text-[11px] font-normal uppercase tracking-wide text-ink-faint sm:inline">
           optional
         </span>
       )}
@@ -147,7 +159,7 @@ export interface FieldProps {
 export function Field({ label, optional, tip, hint, error, children, className }: FieldProps) {
   const id = useId()
   return (
-    <div className={cn('flex flex-col gap-1.5', className)}>
+    <div className={cn('flex min-w-0 flex-col gap-1.5', className)}>
       <Label htmlFor={id} optional={optional} tip={tip}>
         {label}
       </Label>

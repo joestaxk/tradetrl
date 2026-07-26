@@ -109,6 +109,14 @@ export function ReviewPage() {
   const dirty = note.trim() !== (plan?.entryModelNote ?? '').trim()
   const isCurrent = periodRange(today(), kind).start === range.start
 
+  /*
+    A review looks backwards. You cannot review — or describe the entry model
+    you used for — a week that hasn't happened, and a note filed against a
+    future period would sit there being diffed against zero trades forever.
+    The current period is the furthest forward you can go.
+  */
+  const canGoForward = range.start < periodRange(today(), kind).start
+
   if (loading) return <ReviewSkeleton />
 
   return (
@@ -150,6 +158,7 @@ export function ReviewPage() {
           variant="ghost"
           onClick={() => setAnchor(shiftPeriod(anchor, kind, 1))}
           aria-label={`Next ${kind}`}
+          disabled={!canGoForward}
         >
           <ChevronRight aria-hidden />
         </Button>

@@ -5,8 +5,8 @@ import {
   BarChart3,
   CalendarDays,
   Check,
-  Clock,
   Eye,
+  Clock,
   FileDown,
   Flame,
   LayoutGrid,
@@ -69,18 +69,17 @@ function Hero() {
         <div className="stagger flex justify-center" style={{ '--i': 0 } as React.CSSProperties}>
           <Badge tone="accent" size="md">
             <Eye aria-hidden />
-            Observe, never gate
+            Observe. Never gate.
           </Badge>
         </div>
 
         {/* Staggered text reveal, line by line. */}
         <h1 className="mt-6 font-display text-[2.5rem] leading-[1.05] tracking-[-0.01em] text-ink sm:text-6xl">
           <span className="stagger block" style={{ '--i': 1 } as React.CSSProperties}>
-            The journal you'll
+            Log like a pro trader,
           </span>
           <span className="stagger block" style={{ '--i': 2 } as React.CSSProperties}>
-            still be using in{' '}
-            <span className="italic text-accent-bright">March</span>
+            not a <span className="italic text-accent-bright">diary</span>.
           </span>
         </h1>
 
@@ -88,9 +87,10 @@ function Hero() {
           className="stagger mx-auto mt-5 max-w-xl text-[15px] leading-relaxed text-ink-dim sm:text-lg"
           style={{ '--i': 3 } as React.CSSProperties}
         >
-          Most trading journals die in week two, because logging a trade is a chore.
-          This one asks for the pair and the result. Everything else — size, risk,
-          screenshots, why you took it — is optional, forever.
+          Log it in ten seconds — pair, size, result, nothing else required. Then
+          watch the pattern write itself: the setups that actually pay, the
+          sessions where you're sharp, and the exact rule you keep breaking when
+          it counts.
         </p>
 
         <div
@@ -380,103 +380,77 @@ function Features() {
 
 /* --------------------------------------------------------------- pricing */
 
-const FREE = [
-  'Unlimited trades',
-  'Calendar and list views',
-  'Day detail with equity curve',
-  'One risk rule set',
-  'Weekly entry-model note',
-  'Rule tracking and weekly review',
-]
-
-const PRO = [
+const INCLUDED = [
+  'Unlimited trades, unlimited accounts',
+  'Calendar and list views, one tap apart',
+  'Day detail with equity curve and your own notes',
+  'Live risk calculator — it sizes the trade for you',
+  'Log a setup now, mark it win or loss later',
+  'Risk rules that watch without ever blocking a save',
+  'Weekly and monthly review, with your entry-model note',
   'Discipline score and trend',
-  'Revenge-trade and overtrading flags',
-  'R-multiple and expectancy analytics',
+  'Revenge-trade, overtrading and tilt detection',
+  'R-multiple, expectancy, profit factor and drawdown',
   'Session and weekday heatmap',
-  'Per-tag win rates',
-  'Multiple journals',
-  'CSV export',
+  'Per-setup win rates from lightweight tags',
+  'Separate journals for prop, personal and backtest',
+  'Hold-time tracking',
   'Before/after chart viewer',
+  'CSV export — your data leaves whenever you want',
+  'Journaling streaks that reward showing up, not winning',
 ]
 
 function Pricing() {
   const ref = useReveal()
   return (
     <section ref={ref} className="reveal px-5 py-12 sm:py-20">
-      <div className="mx-auto w-full max-w-4xl">
+      <div className="mx-auto w-full max-w-3xl">
         <div className="text-center">
           <h2 className="font-display text-2xl text-ink sm:text-3xl">
-            The habit is free. Always.
+            All of it. For nothing.
           </h2>
           <p className="mx-auto mt-2.5 max-w-lg text-sm leading-relaxed text-ink-muted">
-            Paywalling the core loop would just recreate the problem this exists to
-            solve. Pro adds insight on top of the same entries — never more typing.
+            Charging for the habit would just recreate the problem this exists to
+            solve. There is no paid tier, no trial timer and no feature held back
+            to upsell you later.
           </p>
         </div>
 
-        <div className="mt-8 grid gap-4 sm:grid-cols-2">
-          <div className="stagger flex flex-col rounded-2xl border border-line bg-panel p-6" style={{ '--i': 0 } as React.CSSProperties}>
-            <span className="text-[13px] font-medium uppercase tracking-wider text-ink-muted">
-              Free
+        <div
+          className="stagger mt-8 rounded-2xl border border-accent-edge bg-panel p-6 sm:p-8"
+          style={{ '--i': 0 } as React.CSSProperties}
+        >
+          <div className="flex flex-wrap items-baseline justify-between gap-3">
+            <span className="flex items-baseline gap-2">
+              <span className="font-display text-5xl leading-none text-ink">$0</span>
+              <span className="text-[13px] text-ink-muted">forever</span>
             </span>
-            <span className="mt-2 font-display text-4xl leading-none text-ink">$0</span>
-            <span className="mt-1.5 text-[13px] text-ink-muted">
-              Everything you need to actually journal.
-            </span>
-            <ul className="mt-5 flex flex-1 flex-col gap-2.5">
-              {FREE.map((f) => (
-                <li key={f} className="flex items-start gap-2.5 text-[13px] text-ink-dim">
-                  <Check className="mt-0.5 size-3.5 shrink-0 text-win" aria-hidden />
-                  {f}
-                </li>
-              ))}
-            </ul>
-            <Button variant="secondary" size="md" className="mt-6" asChild>
-              <Link to="/app">Start free</Link>
-            </Button>
+            <Badge tone="accent" size="md">
+              <Sparkles aria-hidden />
+              Everything included
+            </Badge>
           </div>
 
-          <div
-            className="stagger relative flex flex-col rounded-2xl border border-accent-edge bg-panel p-6"
-            style={{ '--i': 1 } as React.CSSProperties}
-          >
-            <span className="absolute right-5 top-5">
-              <Badge tone="accent">
-                <Sparkles aria-hidden />
-                Pro
-              </Badge>
-            </span>
-            <span className="text-[13px] font-medium uppercase tracking-wider text-ink-muted">
-              Pro
-            </span>
-            <span className="mt-2 flex items-baseline gap-1.5">
-              <span className="font-display text-4xl leading-none text-ink">$9</span>
-              <span className="text-[13px] text-ink-muted">/month</span>
-            </span>
-            <span className="mt-1.5 text-[13px] text-ink-muted">
-              More insight from the exact same entries.
-            </span>
-            <ul className="mt-5 flex flex-1 flex-col gap-2.5">
-              {PRO.map((f) => (
-                <li key={f} className="flex items-start gap-2.5 text-[13px] text-ink-dim">
-                  <Check className="mt-0.5 size-3.5 shrink-0 text-accent" aria-hidden />
-                  {f}
-                </li>
-              ))}
-            </ul>
-            <Button variant="primary" size="md" className="mt-6" asChild>
-              <Link to="/app">
-                Start free, upgrade later
-                <ArrowRight aria-hidden />
-              </Link>
-            </Button>
-          </div>
+          <ul className="mt-6 grid gap-2.5 sm:grid-cols-2">
+            {INCLUDED.map((f) => (
+              <li key={f} className="flex items-start gap-2.5 text-[13px] text-ink-dim">
+                <Check className="mt-0.5 size-3.5 shrink-0 text-win" aria-hidden />
+                {f}
+              </li>
+            ))}
+          </ul>
+
+          <Button variant="primary" size="lg" asChild className="mt-7 w-full sm:w-auto">
+            <Link to="/app">
+              Start your journal
+              <ArrowRight aria-hidden />
+            </Link>
+          </Button>
         </div>
 
         <p className="mt-5 flex items-center justify-center gap-1.5 text-center text-[12px] text-ink-faint">
           <FileDown className="size-3.5" aria-hidden />
-          Your trades export to CSV whenever you want them. No lock-in.
+          Export to CSV whenever you want. No lock-in, no hostage-taking.
         </p>
       </div>
     </section>

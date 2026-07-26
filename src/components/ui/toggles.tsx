@@ -48,7 +48,10 @@ export const Switch = forwardRef<
     <SwitchPrimitive.Root
       ref={ref}
       className={cn(
-        'peer inline-flex h-6 w-11 shrink-0 cursor-pointer items-center rounded-full',
+        // min-w + basis keep the capsule 44px wide when it sits beside a long
+        // label; without them flex squeezes it down to a circle on mobile.
+        'peer inline-flex h-6 w-11 min-w-11 shrink-0 grow-0 basis-11 self-center',
+        'cursor-pointer items-center rounded-full',
         'border border-line-strong bg-raised p-0.5',
         'transition-colors duration-250 ease-[var(--ease-out-quint)]',
         'focus-visible:outline-none focus-visible:shadow-[0_0_0_3px_var(--color-accent-wash)]',
@@ -60,7 +63,7 @@ export const Switch = forwardRef<
     >
       <SwitchPrimitive.Thumb
         className={cn(
-          'pointer-events-none block size-[18px] rounded-full bg-ink-dim',
+          'pointer-events-none block size-[18px] min-w-[18px] shrink-0 aspect-square rounded-full bg-ink-dim',
           'shadow-[0_1px_3px_rgba(0,0,0,0.5)]',
           'transition-[transform,background-color] duration-250 ease-[var(--ease-out-quint)]',
           'data-[state=checked]:translate-x-[20px] data-[state=checked]:bg-void',
@@ -172,8 +175,8 @@ export const SegmentedItem = forwardRef<
     <ToggleGroupPrimitive.Item
       ref={ref}
       className={cn(
-        'inline-flex h-9 min-w-11 flex-1 items-center justify-center gap-1.5 rounded-lg px-3',
-        'text-[13px] font-medium text-ink-muted',
+        'inline-flex h-9 min-w-11 flex-1 items-center justify-center gap-1.5 rounded-lg px-2 sm:px-3',
+        'whitespace-nowrap text-[13px] font-medium text-ink-muted',
         'transition-[background-color,color,box-shadow] duration-200 ease-[var(--ease-out-quint)]',
         'hover:text-ink-dim',
         'focus-visible:outline-none focus-visible:shadow-[0_0_0_2px_var(--color-accent-wash)]',
