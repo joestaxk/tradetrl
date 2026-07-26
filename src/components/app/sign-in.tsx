@@ -62,6 +62,23 @@ export function SignIn({ expired = false }: { expired?: boolean }) {
           title: 'No connection',
           description: 'Check your internet and try again.',
         },
+        /*
+          The one misconfiguration a user will actually hit, and the most
+          common cause of a Google sign-in that appears to do nothing: the
+          domain the app is served from is not on Firebase's authorised list.
+          Naming it exactly turns a support ticket into a one-line fix.
+        */
+        'auth/unauthorized-domain': {
+          title: 'This site is not authorised for sign-in yet',
+          description:
+            typeof window !== 'undefined'
+              ? `Add ${window.location.hostname} to Firebase → Authentication → Settings → Authorized domains.`
+              : 'The domain needs adding to the Firebase authorised domains list.',
+        },
+        'auth/operation-not-supported-in-this-environment': {
+          title: 'This browser cannot complete sign-in',
+          description: 'Open the site in Chrome or Safari directly and try again.',
+        },
       }
       const hit = actionable[code]
       setProblem(

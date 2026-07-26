@@ -7,7 +7,14 @@ import {
   useRef,
   useState,
 } from 'react'
-import { onAuthStateChanged, signInWithPopup, signOut, type User } from 'firebase/auth'
+import {
+  getRedirectResult,
+  onAuthStateChanged,
+  signInWithPopup,
+  signInWithRedirect,
+  signOut,
+  type User,
+} from 'firebase/auth'
 import { getFirebaseAuth, googleProvider } from './firebase'
 import { isFirebaseConfigured } from './env'
 import { isSessionExpired } from './session'
@@ -41,6 +48,49 @@ interface AuthValue {
 export const AuthContext = createContext<AuthValue | null>(null)
 export type { AuthValue }
 
+/** How long we'll wait on Firestore before signing someone in anyway. */
+const PROFILE_TIMEOUT_MS = 10_000
+
+/**
+ * Reject after `ms` rather than waiting forever.
+ *
+ * Firestore's SDK has no request timeout — it queues and retries
+ * indefinitely, which is right for a write and completely wrong for anything
+ * blocking a login.
+ */
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error('timed out')), ms),
+    ),
+  ])
+}
+
+/**
+ * Environments where a popup cannot report back and must not be attempted.
+ *
+ * Detection is conservative: when unsure we use the popup, because it is the
+ * better experience where it works and redirect has its own cost (a full page
+ * load, and third-party-storage restrictions on some browsers).
+ */
+function prefersRedirectSignIn(): boolean {
+  if (typeof window === 'undefined') return false
+
+  // An installed PWA. The popup opens in a separate browser process with no
+  // handle back to the standalone window.
+  const standalone =
+    window.matchMedia?.('(display-mode: standalone)').matches ||
+    (window.navigator as { standalone?: boolean }).standalone === true
+  if (standalone) return true
+
+  // In-app browsers, where popups are either blocked or orphaned.
+  const ua = navigator.userAgent || ''
+  return /FBAN|FBAV|Instagram|Line\/|Twitter|LinkedInApp|MicroMessenger|TelegramBot|WebView|; wv\)/i.test(
+    ua,
+  )
+}
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [status, setStatus] = useState<AuthStatus>(
     isFirebaseConfigured ? 'loading' : 'unconfigured',
@@ -63,6 +113,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setStatus((s) => (s === 'loading' ? 'signed-out' : s))
     }, 8000)
 
+    /*
+      Completes a redirect sign-in. Without this the credential sitting in the
+      URL after returning from Google is never consumed, and the user lands
+      back on the sign-in screen having just signed in.
+    */
+    void getRedirectResult(auth).catch((e) => {
+      console.error('[auth] redirect sign-in failed:', e)
+    })
+
     const unsubscribe = onAuthStateChanged(auth, async (fbUser) => {
       clearTimeout(bootTimeout)
       if (!fbUser) {
@@ -73,9 +132,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
 
       try {
-        // Read before writing: upserting would stamp lastActiveAt and destroy
-        // the very evidence the 30-day check depends on.
-        const existing = await loadUser(fbUser.uid)
+        /*
+          Bounded, deliberately.
+
+          The Firestore SDK retries a stalled request forever rather than
+          rejecting it, so `await loadUser(...)` can simply never settle — and
+          because the boot timeout was already cleared above, nothing would
+          ever set a status. The user watches the sign-in screen do nothing,
+          having successfully authenticated. Signing in must never depend on a
+          database round trip completing.
+        */
+        const existing = await withTimeout(loadUser(fbUser.uid), PROFILE_TIMEOUT_MS)
         if (existing && isSessionExpired(existing.lastActiveAt)) {
           expiredRef.current = true
           await signOut(auth)
@@ -83,18 +150,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
 
         expiredRef.current = false
-        const doc = await upsertUser({
-          uid: fbUser.uid,
-          displayName: fbUser.displayName,
-          email: fbUser.email,
-          photoURL: fbUser.photoURL,
-        })
+        const doc = await withTimeout(
+          upsertUser({
+            uid: fbUser.uid,
+            displayName: fbUser.displayName,
+            email: fbUser.email,
+            photoURL: fbUser.photoURL,
+          }),
+          PROFILE_TIMEOUT_MS,
+        )
         setUser(fbUser)
         setProfile(doc)
         setStatus('signed-in')
-      } catch {
+      } catch (e) {
         // A Firestore hiccup must not strand the user on a blank screen — keep
         // them signed in with whatever identity Firebase Auth already gave us.
+        // The profile fills in on the next load.
+        console.error('[auth] profile load failed, continuing signed in:', e)
         setUser(fbUser)
         setStatus('signed-in')
       }
@@ -110,7 +182,42 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const auth = getFirebaseAuth()
     if (!auth) throw new Error('Firebase is not configured')
     expiredRef.current = false
-    await signInWithPopup(auth, googleProvider())
+
+    /*
+      Popup or redirect, chosen by where we're running.
+
+      `signInWithPopup` needs the popup to talk back to the page that opened
+      it. In an installed PWA (display: standalone) and inside in-app browsers
+      — Instagram, Facebook, Telegram, LinkedIn — that channel doesn't exist:
+      the account picker appears, the user picks, the popup closes, and the
+      opener is never told. Nothing happens, no error is thrown, and there is
+      nothing for us to catch. It is the single most reported "login is
+      broken" symptom for Firebase web apps.
+
+      So those environments go straight to redirect, which leaves the page
+      entirely and comes back with the credential in the URL.
+    */
+    if (prefersRedirectSignIn()) {
+      await signInWithRedirect(auth, googleProvider())
+      return
+    }
+
+    try {
+      await signInWithPopup(auth, googleProvider())
+    } catch (e) {
+      const code = (e as { code?: string })?.code ?? ''
+      // The browser refusing or losing the popup is recoverable — redirect
+      // works where popups don't. A cancellation is the user's choice.
+      const popupFailed =
+        code === 'auth/popup-blocked' ||
+        code === 'auth/operation-not-supported-in-this-environment' ||
+        code === 'auth/internal-error'
+      if (popupFailed) {
+        await signInWithRedirect(auth, googleProvider())
+        return
+      }
+      throw e
+    }
   }, [])
 
   const signOutNow = useCallback(async (reason?: 'expired') => {
