@@ -47,12 +47,20 @@ export const Switch = forwardRef<
   return (
     <SwitchPrimitive.Root
       ref={ref}
+      // A 44x24 capsule, stated in plain numbers. Utility sizing let a long
+      // label next to it collapse the width to 24px, which renders as a circle
+      // and stops reading as a switch at all.
+      style={{
+        width: 44,
+        height: 24,
+        minWidth: 44,
+        minHeight: 24,
+        flex: '0 0 auto',
+        borderRadius: 999,
+      }}
       className={cn(
-        // min-w + basis keep the capsule 44px wide when it sits beside a long
-        // label; without them flex squeezes it down to a circle on mobile.
-        'peer inline-flex h-6 w-11 min-w-11 shrink-0 grow-0 basis-11 self-center',
-        'cursor-pointer items-center rounded-full',
-        'border border-line-strong bg-raised p-0.5',
+        'peer inline-flex cursor-pointer items-center self-center p-0.5',
+        'border border-line-strong bg-raised',
         'transition-colors duration-250 ease-[var(--ease-out-quint)]',
         'focus-visible:outline-none focus-visible:shadow-[0_0_0_3px_var(--color-accent-wash)]',
         'data-[state=checked]:bg-accent data-[state=checked]:border-accent',
@@ -62,8 +70,16 @@ export const Switch = forwardRef<
       {...props}
     >
       <SwitchPrimitive.Thumb
+        style={{
+          width: 18,
+          height: 18,
+          minWidth: 18,
+          minHeight: 18,
+          flex: '0 0 auto',
+          borderRadius: '50%',
+        }}
         className={cn(
-          'pointer-events-none block size-[18px] min-w-[18px] shrink-0 aspect-square rounded-full bg-ink-dim',
+          'pointer-events-none block bg-ink-dim',
           'shadow-[0_1px_3px_rgba(0,0,0,0.5)]',
           'transition-[transform,background-color] duration-250 ease-[var(--ease-out-quint)]',
           'data-[state=checked]:translate-x-[20px] data-[state=checked]:bg-void',

@@ -194,7 +194,9 @@ function DayCell({
     >
       <span
         className={cn(
-          'flex size-5 items-center justify-center rounded-full text-[11px] font-medium tnum sm:text-xs',
+          // shrink-0 matters here: this sits in a column flex inside a cell
+          // that gets very tight at 320px, and without it the circle flattens.
+          'flex size-5 min-w-5 shrink-0 items-center justify-center rounded-full text-[11px] font-medium tnum sm:text-xs',
           isToday ? 'bg-accent text-void' : 'text-ink-muted',
           hasTrades && !isToday && 'text-ink-dim',
         )}

@@ -56,6 +56,26 @@ export const Route = createFileRoute('/api/cron/daily-checkin')({
           )
         }
 
+        /*
+          Resend's `resend.dev` sender is testing-only: it can reach the
+          account owner's own address and nobody else, returning 403 for
+          everyone. Running the real job with it would mean one delivered
+          email and a wall of failures, so we stop and say why instead.
+          The dry run still works, which is how you check the rest of the
+          wiring before you own a domain.
+        */
+        const testingSender = /@resend\.dev>?\s*$/.test((from ?? '').trim())
+        if (testingSender && !dryRun) {
+          return json(
+            {
+              ok: false,
+              error:
+                'RESEND_FROM uses resend.dev, which can only deliver to your own Resend account address. Verify a domain you own and set RESEND_FROM to an address on it before enabling check-in emails.',
+            },
+            500,
+          )
+        }
+
         const db = await getAdminDb()
         if (!db) {
           return json({ ok: false, error: 'Firebase Admin is not configured' }, 500)
@@ -148,6 +168,9 @@ export const Route = createFileRoute('/api/cron/daily-checkin')({
                 wouldSend,
                 resendConfigured: Boolean(apiKey && from),
                 from: from ?? null,
+                // Surfaced in the dry run so the limitation is visible before
+                // anyone flips the feature on.
+                testingSenderOnly: testingSender,
               }
             : {}),
         })

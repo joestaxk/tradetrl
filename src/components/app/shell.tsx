@@ -72,9 +72,18 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <Dropdown>
               <DropdownTrigger asChild>
                 <button
+                  // Plain dimensions + flex off. Utility sizing kept losing to
+                  // the header's flex row, which squeezed this into an oval.
+                  style={{
+                    width: 36,
+                    height: 36,
+                    minWidth: 36,
+                    minHeight: 36,
+                    flex: '0 0 auto',
+                    borderRadius: '50%',
+                  }}
                   className={cn(
-                    'flex size-9 min-w-9 shrink-0 grow-0 basis-9 aspect-square self-center',
-                    'items-center justify-center overflow-hidden rounded-full',
+                    'flex items-center justify-center self-center overflow-hidden',
                     'border border-line-strong bg-raised text-[13px] font-medium text-ink-dim',
                     'transition-colors duration-200 hover:border-ink-faint hover:text-ink',
                   )}

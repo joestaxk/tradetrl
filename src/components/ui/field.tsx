@@ -6,12 +6,11 @@ import { cn } from './cn'
 /**
  * The "?" that opens a field's explanation.
  *
- * The geometry here is load-bearing. As a flex child this button was being
- * squeezed narrower than its own width while `align-items: stretch` pulled it
- * taller — a 16px circle rendering as a tall oval. `shrink-0` alone does not
- * prevent that: an explicit `min-w`, `aspect-square` and `self-center` do,
- * because a min-width floor cannot be overridden by flex shrinking and
- * self-center stops the row's height from stretching it.
+ * Sized with plain inline width/height plus `flex: 0 0 auto`, deliberately.
+ * Utility classes for sizing kept losing this argument — a flex parent would
+ * squeeze the width while the row's height pulled it taller, and the result
+ * was a tall oval instead of a circle. An inline width and height with flex
+ * grow and shrink both off cannot be renegotiated by any parent.
  */
 export function InfoTip({ label }: { label: React.ReactNode }) {
   return (
@@ -20,10 +19,17 @@ export function InfoTip({ label }: { label: React.ReactNode }) {
         <button
           type="button"
           aria-label="What is this?"
+          style={{
+            width: 18,
+            height: 18,
+            minWidth: 18,
+            minHeight: 18,
+            flex: '0 0 auto',
+            borderRadius: '50%',
+          }}
           className={cn(
-            'inline-flex size-4 min-w-4 shrink-0 grow-0 basis-4 self-center aspect-square',
-            'items-center justify-center rounded-full',
-            'border border-line-strong text-[9px] font-bold leading-none text-ink-faint',
+            'inline-flex items-center justify-center self-center',
+            'border border-line-strong text-[10px] font-bold leading-none text-ink-faint',
             'transition-colors duration-150 hover:border-accent hover:text-accent-bright',
             'focus-visible:outline-none focus-visible:border-accent focus-visible:text-accent-bright',
             'data-[state=open]:border-accent data-[state=open]:text-accent-bright',

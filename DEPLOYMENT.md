@@ -39,33 +39,52 @@ neither configured.
 | Evening check-in    | the trader        | Vercel Cron, weekday evenings |
 | Feedback and ideas  | `ADMIN_EMAIL`     | whenever someone sends one  |
 
-### Resend needs a verified domain
+### Resend needs a domain you own
 
-This is the part with no way around it. Resend's docs are explicit: *"You must
-add and verify at least one domain to send and receive emails with Resend."*
-Until a domain is verified, nothing sends — the code degrades quietly and logs
-rather than erroring at the user, but no mail leaves.
+Resend's docs are explicit: *"You must add and verify at least one domain to
+send and receive emails with Resend."* There is one exception, and it is
+narrow.
 
-To verify:
+**The testing sender.** `onboarding@resend.dev` works with no DNS at all, but
+per Resend's own knowledge base it *"can only send emails to the email address
+associated with your Resend account"* — anything else returns 403.
 
-1. Resend → **Domains** → **Add Domain**, and enter a domain you control.
-2. Resend shows a set of DNS records. Add them at your registrar:
-   - a **TXT** record for SPF — the IPs allowed to send as your domain
-   - a **TXT** record for DKIM — the public key that signs your mail
-   - an **MX** record so bounces and complaints come back to you
-3. Wait for propagation (usually minutes, occasionally hours) and hit
-   **Verify**.
-4. Set `RESEND_FROM` to an address *on that domain*, e.g.
-   `tradetrl <checkin@yourdomain.com>`. The from-address domain must be the
-   verified one; the recipient can be anyone.
+That splits the two features cleanly:
 
-If you don't own a domain yet, a cheap one used only for sending is enough —
-the app never needs to receive mail at it.
+| | Works on `resend.dev`? | Why |
+| --- | --- | --- |
+| Feedback → `ADMIN_EMAIL` | **Yes** | It is your own address, which is exactly what the testing sender allows |
+| Evening check-in → traders | **No** | Every recipient other than you is a 403 |
 
-Resend also ships an `onboarding@resend.dev` sender used throughout their
-examples. Their API reference doesn't document what recipient restrictions
-apply to it, so treat it as a way to see one test email arrive and not as a
-production sender — verify a real domain before anyone but you is using this.
+So with `RESEND_FROM="tradetrl <onboarding@resend.dev>"` — the default — user
+feedback reaches you immediately with zero setup, provided `ADMIN_EMAIL` is the
+address you signed up to Resend with. The check-in email stays off until you
+own a domain, and the cron route refuses to run for real with a `resend.dev`
+sender rather than generating a wall of 403s.
+
+**A Vercel subdomain cannot be used.** `something.vercel.app` is not yours,
+has no DNS panel you control, and sits on the Public Suffix List. Resend will
+not verify it. Sending to anyone but yourself needs a domain you actually
+registered — a cheap one used only for mail is fine, it never has to serve the
+app.
+
+Once you have one:
+
+1. Resend → **Domains** → **Add Domain**.
+2. Add the three records it shows you at whichever provider runs your DNS:
+   - **MX** on `send` → `feedback-smtp.<region>.amazonses.com`, priority 10
+   - **TXT** on `send` → `v=spf1 include:amazonses.com ~all`
+   - **TXT** on `resend._domainkey` → the long `p=…` public key
+3. Hit **Verify**, then set `RESEND_FROM` to an address on that domain.
+
+If your DNS is on Vercel, note that its **Name** field takes the prefix only —
+the docs put it as *"For www.example.com, the name argument would be www."* So
+`resend._domainkey.yourdomain.com` is entered as `resend._domainkey`. Pasting
+the full hostname yields `resend._domainkey.yourdomain.com.yourdomain.com`,
+which never verifies and gives no clue why. Vercel's DNS panel only applies if
+the domain uses Vercel's nameservers — check with `dig NS yourdomain.com
++short`; if it is not `ns1.vercel-dns.com`, the records belong at whoever is
+listed instead.
 
 ### CRON_SECRET
 
