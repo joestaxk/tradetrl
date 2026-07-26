@@ -29,4 +29,18 @@ export const flags = {
   emailCheckIn: raw.VITE_ENABLE_EMAIL_CHECKIN === 'true',
 }
 
+/**
+ * Public Telegram handle for direct support, without the leading '@'.
+ *
+ * A bot can only message someone who messaged it first, so the in-app form is
+ * one-way by design. This link is the other half: a real conversation, one tap
+ * away, in an app the trader already has open on their phone.
+ */
+export const telegramHandle = (raw.VITE_TELEGRAM_HANDLE as string | undefined)?.replace(
+  /^@/,
+  '',
+)
+
+export const telegramUrl = telegramHandle ? `https://t.me/${telegramHandle}` : null
+
 export const SESSION_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000

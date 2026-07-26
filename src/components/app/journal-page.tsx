@@ -162,7 +162,7 @@ export function JournalPage() {
 
       {feedback.ask && (
         <FeedbackCard
-          onSubmit={(mood, note) => feedback.send(mood, note)}
+          onSubmit={(mood, note, telegram) => feedback.send(mood, note, 'feedback', telegram)}
           onDismiss={() => void feedback.dismiss()}
         />
       )}

@@ -1,7 +1,8 @@
 import { useState } from 'react'
-import { Check, Loader2, X } from 'lucide-react'
+import { Check, Loader2, Send, X } from 'lucide-react'
 import { Button } from '#/components/ui/button'
-import { Textarea } from '#/components/ui/field'
+import { telegramUrl } from '#/lib/env'
+import { Field, Input, Textarea } from '#/components/ui/field'
 import { Face } from '#/components/feedback/faces'
 import { MOODS, replyFor, type Mood } from '#/lib/feedback'
 import { cn } from '#/components/ui/cn'
@@ -18,12 +19,13 @@ export function FeedbackCard({
   onDismiss,
   className,
 }: {
-  onSubmit: (mood: Mood, note: string) => Promise<void>
+  onSubmit: (mood: Mood, note: string, telegram?: string) => Promise<void>
   onDismiss: () => void
   className?: string
 }) {
   const [mood, setMood] = useState<Mood | null>(null)
   const [note, setNote] = useState('')
+  const [telegram, setTelegram] = useState('')
   const [busy, setBusy] = useState(false)
   const [done, setDone] = useState(false)
 
@@ -31,7 +33,7 @@ export function FeedbackCard({
     if (!mood) return
     setBusy(true)
     try {
-      await onSubmit(mood, note)
+      await onSubmit(mood, note, telegram)
       setDone(true)
       // Let them read the thank-you, then get out of the way.
       setTimeout(onDismiss, 2200)
@@ -114,7 +116,30 @@ export function FeedbackCard({
             }
             aria-label="Anything you would change"
           />
-          <div className="flex items-center gap-2">
+          {/*
+            Where it lands, and that a reply is possible. People say far more
+            when they know a person reads it than when it looks like it drops
+            into a form somewhere.
+          */}
+          <Field
+            label="Your Telegram"
+            optional
+            hint="So I can reply. Leave blank to send it anonymously."
+          >
+            {(id) => (
+              <Input
+                id={id}
+                value={telegram}
+                onChange={(e) => setTelegram(e.target.value)}
+                placeholder="@yourhandle"
+                autoCapitalize="none"
+                autoCorrect="off"
+                spellCheck={false}
+              />
+            )}
+          </Field>
+
+          <div className="flex flex-wrap items-center gap-2">
             <Button variant="primary" size="sm" onClick={send} disabled={busy}>
               {busy && <Loader2 className="animate-spin" aria-hidden />}
               Send
@@ -123,6 +148,26 @@ export function FeedbackCard({
               or just send the face — that's plenty.
             </span>
           </div>
+
+          <p className="flex flex-wrap items-center gap-1.5 text-[12px] leading-relaxed text-ink-muted">
+            <Send className="size-3 shrink-0 text-ink-faint" aria-hidden />
+            This goes straight to my Telegram, and I read every one.
+            {telegramUrl && (
+              <>
+                {' '}
+                Prefer to talk?{' '}
+                <a
+                  href={telegramUrl}
+                  target="_blank"
+                  rel="noreferrer noopener"
+                  className="text-accent-bright underline decoration-dotted underline-offset-2 hover:text-accent"
+                >
+                  Message me directly
+                </a>
+                .
+              </>
+            )}
+          </p>
         </div>
       )}
     </section>

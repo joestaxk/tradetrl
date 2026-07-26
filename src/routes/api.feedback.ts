@@ -1,6 +1,11 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { escapeHtml } from '#/lib/server/checkin-email'
 import { MAX_NOTE } from '#/lib/feedback'
+import {
+  buildFeedbackMessage,
+  sendTelegram,
+  telegramConfigured,
+} from '#/lib/server/telegram'
 
 /**
  * Feedback → the admin's inbox.
@@ -31,6 +36,7 @@ export const Route = createFileRoute('/api/feedback')({
           email?: string
           name?: string
           uid?: string
+          telegram?: string
           tradeCount?: number
           kind?: string
         }
@@ -44,13 +50,36 @@ export const Route = createFileRoute('/api/feedback')({
         const note = (typeof body.note === 'string' ? body.note : '').slice(0, MAX_NOTE)
         if (!mood && !note) return json({ ok: false, error: 'nothing to send' }, 400)
 
+        /*
+          Telegram first, and email only as a fallback.
+
+          Telegram needs no domain, no DNS records and no verification wait,
+          which is precisely what stopped email working here — and it arrives
+          as a push notification rather than sitting unread in a spam folder.
+        */
+        if (telegramConfigured()) {
+          const sent = await sendTelegram(
+            buildFeedbackMessage({
+              mood,
+              note,
+              name: body.name ?? null,
+              email: body.email ?? null,
+              telegram: body.telegram ?? null,
+              context: body.kind === 'idea' ? 'idea' : 'feedback',
+            }),
+          )
+          if (sent.ok) return json({ ok: true, delivered: 'telegram' })
+          // Fall through to email rather than dropping it.
+          console.error('[feedback] telegram failed:', sent.error)
+        }
+
         const apiKey = process.env.RESEND_API_KEY
         const from = process.env.RESEND_FROM
         if (!apiKey || !from) {
           // Not an error the user should ever see — their feedback is already
           // saved. Report it so the deployment owner can spot the gap.
-          console.warn('[feedback] Resend not configured; email skipped')
-          return json({ ok: true, emailed: false })
+          console.warn('[feedback] no delivery channel configured')
+          return json({ ok: true, delivered: 'none' })
         }
 
         const kind = body.kind === 'idea' ? 'Idea' : 'Feedback'
@@ -85,14 +114,14 @@ export const Route = createFileRoute('/api/feedback')({
           })
           if (!res.ok) {
             console.error('[feedback] resend responded', res.status, await res.text())
-            return json({ ok: true, emailed: false })
+            return json({ ok: true, delivered: 'none' })
           }
         } catch (e) {
           console.error('[feedback] send failed:', e)
-          return json({ ok: true, emailed: false })
+          return json({ ok: true, delivered: 'none' })
         }
 
-        return json({ ok: true, emailed: true })
+        return json({ ok: true, delivered: 'email' })
       },
     },
   },

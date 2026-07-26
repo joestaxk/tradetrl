@@ -27,7 +27,12 @@ export function useFeedback(trades: Trade[]) {
     })
 
   const send = useCallback(
-    async (mood: Mood | undefined, note: string, kind: 'feedback' | 'idea' = 'feedback') => {
+    async (
+      mood: Mood | undefined,
+      note: string,
+      kind: 'feedback' | 'idea' = 'feedback',
+      telegram?: string,
+    ) => {
       const clean = normalizeNote(note)
       if (!mood && !clean) return
 
@@ -36,7 +41,7 @@ export function useFeedback(trades: Trade[]) {
           await saveFeedback(user.uid, { mood, note: clean, kind })
           await refreshProfile()
         } catch (e) {
-          // Their opinion still reaches us via the email below.
+          // Their opinion still reaches us via the delivery call below.
           console.error('[feedback] save failed:', e)
         }
       }
@@ -49,6 +54,8 @@ export function useFeedback(trades: Trade[]) {
             mood,
             note: clean,
             kind,
+            // How to reply. Blank means they chose to stay anonymous.
+            telegram: telegram?.trim() || undefined,
             uid: user?.uid,
             email: profile?.email,
             name: profile?.displayName,

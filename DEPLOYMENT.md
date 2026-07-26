@@ -29,15 +29,79 @@ quotes exactly as it appears in the service-account JSON.
 
 ---
 
+## Support: Telegram
+
+Feedback and ideas go to Telegram, not email. It needs no domain, no DNS, no
+verification wait and no spam folder — it arrives as a push notification on
+your phone. Email remains a fallback if Telegram is unconfigured or fails.
+
+### What you need
+
+1. **Bot token.** Open Telegram, message **@BotFather**, send `/newbot`, follow
+   the two prompts (a display name and a username ending in `bot`). It replies
+   with a token like `8123456789:AAH...`. That is `TELEGRAM_BOT_TOKEN`.
+
+2. **Your chat id.** Send your new bot any message — *"hi"* is fine. A bot
+   cannot message someone who hasn't messaged it first, so this step is what
+   opens the channel. Then visit:
+
+   ```
+   https://api.telegram.org/bot<YOUR_TOKEN>/getUpdates
+   ```
+
+   Find `"chat":{"id":123456789` in the response. That number is
+   `TELEGRAM_CHAT_ID`.
+
+3. **Your public username**, e.g. `joestaxk` — set as `VITE_TELEGRAM_HANDLE`
+   without the `@`. This powers the "Message me on Telegram" link that lets a
+   trader start a real conversation with you.
+
+```
+TELEGRAM_BOT_TOKEN=8123456789:AAH...
+TELEGRAM_CHAT_ID=123456789
+VITE_TELEGRAM_HANDLE=joestaxk
+```
+
+The first two are server-only. The third is deliberately `VITE_`-prefixed
+because a public username is meant to be public — it's the same handle anyone
+can already search for.
+
+### Replying
+
+The bot delivers *to* you; it cannot reply *for* you, because Telegram forbids
+a bot from opening a chat with someone who hasn't messaged it. So:
+
+- the feedback form asks for the sender's Telegram handle (optional), and the
+  message you receive shows it — one tap to open that chat and reply;
+- if they'd rather just talk, the "Message me on Telegram" link starts a direct
+  conversation with you, no bot involved.
+
+When someone sends anonymously, the message says so explicitly rather than
+leaving you wondering why there's no contact.
+
+### Checking it works
+
+Send yourself a test straight from the terminal:
+
+```bash
+curl -s "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/sendMessage" \
+  -H 'Content-Type: application/json' \
+  -d "{\"chat_id\":\"$TELEGRAM_CHAT_ID\",\"text\":\"tradetrl is wired up\"}"
+```
+
+`{"ok":true,...}` means done. `chat not found` means step 2 was skipped — message
+the bot first.
+
+---
+
 ## Email
 
-Two things send mail, and both are optional — the app is fully functional with
-neither configured.
+The evening check-in still uses email. It is optional and off by default.
 
 | What                | Goes to           | Trigger                     |
 | ------------------- | ----------------- | --------------------------- |
 | Evening check-in    | the trader        | Vercel Cron, weekday evenings |
-| Feedback and ideas  | `ADMIN_EMAIL`     | whenever someone sends one  |
+| Feedback and ideas  | Telegram          | whenever someone sends one  |
 
 ### Resend needs a domain you own
 

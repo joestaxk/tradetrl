@@ -1,6 +1,7 @@
 import { useState } from 'react'
-import { Check, Lightbulb, Loader2 } from 'lucide-react'
+import { Check, Lightbulb, Loader2, Send } from 'lucide-react'
 import { Button } from '#/components/ui/button'
+import { telegramUrl } from '#/lib/env'
 import { Textarea } from '#/components/ui/field'
 import { Card, CardBody, CardHeader, CardTitle } from '#/components/ui/primitives'
 
@@ -39,8 +40,8 @@ export function IdeaBox({
         <div>
           <CardTitle>Tell us something</CardTitle>
           <p className="mt-1 text-[13px] leading-relaxed text-ink-muted">
-            Something broken, something missing, something annoying — it all
-            comes straight to us. As often as you like.
+            Something broken, something missing, something annoying — it lands on
+            my Telegram and I read every one. As often as you like.
           </p>
         </div>
         <Lightbulb className="size-4 shrink-0 text-ink-faint" aria-hidden />
@@ -65,6 +66,27 @@ export function IdeaBox({
             </span>
           )}
         </div>
+
+        {/*
+          A bot can only message someone who messaged it first, so the form
+          above is one-way by design. This is the other half — a real
+          conversation, in an app they already have on their phone.
+        */}
+        {telegramUrl && (
+          <p className="flex flex-wrap items-center gap-1.5 text-[12px] leading-relaxed text-ink-muted">
+            <Send className="size-3 shrink-0 text-ink-faint" aria-hidden />
+            Want a reply, or just want to talk it through?{' '}
+            <a
+              href={telegramUrl}
+              target="_blank"
+              rel="noreferrer noopener"
+              className="text-accent-bright underline decoration-dotted underline-offset-2 hover:text-accent"
+            >
+              Message me on Telegram
+            </a>
+            .
+          </p>
+        )}
       </CardBody>
     </Card>
   )
