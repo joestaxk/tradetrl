@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { AlertTriangle, ArrowRight } from 'lucide-react'
 import { Button } from '#/components/ui/button'
 import { Mark } from '#/components/app/mark'
+import { AuthDebug } from '#/components/app/auth-debug'
 import { useAuth } from '#/lib/auth'
 import { toast } from '#/components/ui/toast'
 
@@ -30,6 +31,10 @@ function GoogleGlyph() {
 }
 
 export function SignIn({ expired = false }: { expired?: boolean }) {
+  const showDebug =
+    typeof window !== 'undefined' &&
+    new URLSearchParams(window.location.search).has('debug')
+
   const { signInWithGoogle } = useAuth()
   const [busy, setBusy] = useState(false)
   // Persisted alongside the button, because a toast disappears before a
@@ -137,6 +142,9 @@ export function SignIn({ expired = false }: { expired?: boolean }) {
             </p>
           )}
         </div>
+
+        {/* Opt-in, so a stuck user can hand back facts instead of symptoms. */}
+        {showDebug && <AuthDebug />}
       </div>
     </main>
   )

@@ -20,7 +20,6 @@ import { AccountsCard } from '#/components/settings/accounts-card'
 import { AccountStandingCard } from '#/components/settings/account-standing-card'
 import { StrategiesCard } from '#/components/settings/strategies-card'
 import { SessionsCard } from '#/components/settings/sessions-card'
-import { InstallCard } from '#/components/settings/install-card'
 import { IdeaBox } from '#/components/feedback/idea-box'
 import { useFeedback } from '#/lib/use-feedback'
 import { useTrades } from '#/lib/use-trades'
@@ -150,8 +149,6 @@ export function SettingsPage() {
       <PageTitle eyebrow="Settings" title="Preferences" />
 
       <AccountStandingCard />
-
-      <InstallCard />
 
       <AccountsCard />
 

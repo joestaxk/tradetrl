@@ -15,7 +15,7 @@ import {
   signOut,
   type User,
 } from 'firebase/auth'
-import { getFirebaseAuth, googleProvider } from './firebase'
+import { authReady, getFirebaseAuth, googleProvider } from './firebase'
 import { isFirebaseConfigured } from './env'
 import { isSessionExpired } from './session'
 import { loadUser, savePrefs, upsertUser } from './repo'
@@ -182,6 +182,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const auth = getFirebaseAuth()
     if (!auth) throw new Error('Firebase is not configured')
     expiredRef.current = false
+
+    // Without this the credential can be written to in-memory persistence and
+    // lost on the redirect's page reload.
+    await authReady()
 
     /*
       Popup or redirect, chosen by where we're running.

@@ -3,7 +3,7 @@ import { TooltipProvider } from '#/components/ui/overlays'
 import { Toaster } from '#/components/ui/toast'
 import { AuthProvider } from '#/lib/auth'
 import { NotFound } from '#/components/app/not-found'
-import { registerServiceWorker } from '#/lib/use-pwa'
+import { unregisterServiceWorkers } from '#/lib/use-pwa'
 import { watchForStaleBuild } from '#/lib/stale-build'
 import appCss from '../styles.css?url'
 
@@ -25,17 +25,10 @@ export const Route = createRootRoute({
       },
       { name: 'theme-color', content: '#0b0d10' },
       { name: 'color-scheme', content: 'dark' },
-      // iOS ignores the manifest for standalone mode; these are what make an
-      // installed tradetrl open without Safari's chrome.
-      { name: 'mobile-web-app-capable', content: 'yes' },
-      { name: 'apple-mobile-web-app-capable', content: 'yes' },
-      { name: 'apple-mobile-web-app-title', content: 'tradetrl' },
-      { name: 'apple-mobile-web-app-status-bar-style', content: 'black-translucent' },
     ],
     links: [
       { rel: 'stylesheet', href: appCss },
       { rel: 'icon', href: '/favicon.svg', type: 'image/svg+xml' },
-      { rel: 'manifest', href: '/manifest.webmanifest' },
       { rel: 'apple-touch-icon', href: '/icons/icon-180.png', sizes: '180x180' },
       { rel: 'preconnect', href: 'https://fonts.googleapis.com' },
       { rel: 'preconnect', href: 'https://fonts.gstatic.com', crossOrigin: 'anonymous' },
@@ -49,9 +42,11 @@ export const Route = createRootRoute({
   shellComponent: RootDocument,
 })
 
-registerServiceWorker()
-// Must run before any route chunk is requested, so a deploy that happened
-// while the app was open recovers itself instead of breaking the screen.
+// The PWA layer was removed after it repeatedly served a mixture of two
+// builds. This actively tears down any worker still installed on a device.
+unregisterServiceWorkers()
+// Kept: a deploy that lands while the app is open should recover itself
+// rather than breaking the screen. That is true with or without a worker.
 watchForStaleBuild()
 
 function RootDocument({ children }: { children: React.ReactNode }) {

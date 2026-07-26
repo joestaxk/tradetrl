@@ -17,6 +17,7 @@ import { firebaseConfig, isFirebaseConfigured } from './env'
 let app: FirebaseApp | null = null
 let authInstance: Auth | null = null
 let dbInstance: Firestore | null = null
+let persistenceReady: Promise<void> = Promise.resolve()
 
 export function getFirebaseApp(): FirebaseApp | null {
   if (typeof window === 'undefined' || !isFirebaseConfigured) return null
@@ -29,12 +30,34 @@ export function getFirebaseAuth(): Auth | null {
   if (!a) return null
   if (!authInstance) {
     authInstance = getAuth(a)
-    // Spec: stay signed in indefinitely unless the user signs out. The 30-day
-    // expiry is enforced explicitly in session.ts, because Firebase has no
-    // native concept of it — local persistence alone never expires.
-    void setPersistence(authInstance, browserLocalPersistence)
+    /*
+      Kicked off here so it is in flight as early as possible, but callers that
+      are about to sign in must await `authReady()` instead of relying on this.
+
+      `setPersistence` is asynchronous. Starting a sign-in before it settles
+      means Firebase may still be on in-memory persistence, and an in-memory
+      credential does not survive the full page reload that a redirect sign-in
+      performs — the user authenticates, comes back, and is signed out. That is
+      a silent failure with no error to catch.
+    */
+    persistenceReady = setPersistence(authInstance, browserLocalPersistence).catch(
+      (e) => {
+        // Storage can be unavailable (private mode, locked-down browsers).
+        // Sign-in still works for the session; it just won't be remembered.
+        console.error('[auth] could not enable persistent sessions:', e)
+      },
+    )
   }
   return authInstance
+}
+
+/**
+ * Resolves once session persistence is actually configured.
+ * Must be awaited before any sign-in call.
+ */
+export async function authReady(): Promise<void> {
+  getFirebaseAuth()
+  await persistenceReady
 }
 
 export function getDb(): Firestore | null {
