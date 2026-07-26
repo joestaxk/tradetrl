@@ -22,6 +22,7 @@ import { toast } from '#/components/ui/toast'
 import { useAuth } from '#/lib/auth'
 import { useJournals } from '#/lib/use-journals'
 import { createJournal, deleteJournal, updateJournal } from '#/lib/repo'
+import { today } from '#/lib/dates'
 import {
   DEFAULT_JOURNAL_ID,
   JOURNAL_KINDS,
@@ -124,8 +125,8 @@ function AccountRow({
             )}
           </span>
           <span className="mt-0.5 text-[11px] text-ink-faint tnum">
-            {typeof journal.accountSize === 'number' && journal.accountSize > 0
-              ? `${compactAmount(journal.accountSize, journal.currency)} · ${journal.currency}`
+            {typeof journal.startingBalance === 'number' && journal.startingBalance > 0
+              ? `${compactAmount(journal.startingBalance, journal.currency)} · ${journal.currency}`
               : `No balance set · ${journal.currency}`}
             {typeof journal.riskRules.maxRiskPerTradePct === 'number' &&
               ` · max ${journal.riskRules.maxRiskPerTradePct}% per trade`}
@@ -174,11 +175,18 @@ function AccountDialog({
   const isEdit = Boolean(journal)
   const [name, setName] = useState(journal?.name ?? '')
   const [kind, setKind] = useState(journal?.kind ?? 'personal')
-  const [size, setSize] = useState(journal?.accountSize?.toString() ?? '')
+  const [size, setSize] = useState(journal?.startingBalance?.toString() ?? '')
   const [currency, setCurrency] = useState(journal?.currency ?? 'USD')
   const [maxRisk, setMaxRisk] = useState(
     journal?.riskRules.maxRiskPerTradePct?.toString() ?? '',
   )
+  const [riskBasis, setRiskBasis] = useState<'starting' | 'current'>(
+    journal?.riskBasis ?? 'starting',
+  )
+  const [startedOn, setStartedOn] = useState(journal?.startedOn ?? today())
+  // Deleting an account destroys every trade in it, so the name has to be
+  // typed out. A misplaced tap must not be able to erase a year of journalling.
+  const [confirmName, setConfirmName] = useState('')
   const [busy, setBusy] = useState(false)
 
   // Re-seed each time it opens, so a cancelled edit never leaks into the next.
@@ -186,9 +194,12 @@ function AccountDialog({
     if (v) {
       setName(journal?.name ?? '')
       setKind(journal?.kind ?? 'personal')
-      setSize(journal?.accountSize?.toString() ?? '')
+      setSize(journal?.startingBalance?.toString() ?? '')
       setCurrency(journal?.currency ?? 'USD')
       setMaxRisk(journal?.riskRules.maxRiskPerTradePct?.toString() ?? '')
+      setRiskBasis(journal?.riskBasis ?? 'starting')
+      setStartedOn(journal?.startedOn ?? today())
+      setConfirmName('')
     }
     onOpenChange(v)
   }
@@ -202,8 +213,10 @@ function AccountDialog({
       const payload = {
         name: name.trim(),
         kind,
-        accountSize:
+        startingBalance:
           Number.isFinite(parsedSize) && parsedSize > 0 ? parsedSize : undefined,
+        startedOn,
+        riskBasis,
         currency,
         riskRules: {
           ...(journal?.riskRules ?? {}),
@@ -226,8 +239,12 @@ function AccountDialog({
     }
   }
 
+  const confirmMatches =
+    Boolean(journal) &&
+    confirmName.trim().toLowerCase() === (journal?.name ?? '').trim().toLowerCase()
+
   const remove = async () => {
-    if (!uid || !journal) return
+    if (!uid || !journal || !confirmMatches) return
     setBusy(true)
     try {
       await deleteJournal(uid, journal.id)
@@ -329,14 +346,99 @@ function AccountDialog({
 
           {isEdit && canDelete && (
             <p className="text-[12px] leading-relaxed text-ink-faint">
-              Deleting an account also deletes every trade logged in it. There's no undo.
+              Deleting <span className="text-ink">{journal?.name}</span> also deletes
+              every trade logged in it, and its whole balance history. There's no undo.
             </p>
+          )}
+
+          {/*
+            Type-to-confirm, because this is the one action in the app that
+            destroys data a trader cannot rebuild. A mis-tap must not be able
+            to erase a year of journalling.
+          */}
+          {isEdit && canDelete && (
+            <Field
+              label="Type the account name to delete it"
+              hint="Leave blank if you're just editing."
+            >
+              {(id) => (
+                <Input
+                  id={id}
+                  value={confirmName}
+                  onChange={(e) => setConfirmName(e.target.value)}
+                  placeholder={journal?.name}
+                  autoCapitalize="none"
+                  autoCorrect="off"
+                />
+              )}
+            </Field>
+          )}
+          {/*
+            Said once, before they commit, in plain words. Every one of these
+            has caused a "why isn't this working" moment, and each is far
+            easier to explain here than to discover later.
+          */}
+          {!isEdit && (
+            <div className="flex flex-col gap-2.5 rounded-xl border border-line bg-raised p-3.5">
+              <span className="text-[11px] font-medium uppercase tracking-wider text-ink-faint">
+                Before you add it
+              </span>
+              <ul className="flex flex-col gap-2 text-[13px] leading-relaxed text-ink-dim">
+                <li className="flex gap-2">
+                  <span className="mt-[7px] size-1 shrink-0 rounded-full bg-ink-faint" aria-hidden />
+                  <span>
+                    <span className="text-ink">Each account is its own journal.</span> Trades,
+                    balance, rules and stats are kept apart. A trade you log goes to whichever
+                    account is selected at the top of the screen — nowhere else.
+                  </span>
+                </li>
+                <li className="flex gap-2">
+                  <span className="mt-[7px] size-1 shrink-0 rounded-full bg-ink-faint" aria-hidden />
+                  <span>
+                    <span className="text-ink">The starting balance is the anchor.</span> Every
+                    closed trade adds to or subtracts from it, so you can see what the account
+                    is actually worth — not just a P&L number floating on its own.
+                  </span>
+                </li>
+                <li className="flex gap-2">
+                  <span className="mt-[7px] size-1 shrink-0 rounded-full bg-ink-faint" aria-hidden />
+                  <span>
+                    <span className="text-ink">Risk is measured against your choice above.</span>{' '}
+                    On a prop evaluation, 1% usually means 1% of the deposit forever. Compounding
+                    means 1% of whatever the account is worth today. Pick the one your firm or
+                    your plan actually uses.
+                  </span>
+                </li>
+                <li className="flex gap-2">
+                  <span className="mt-[7px] size-1 shrink-0 rounded-full bg-ink-faint" aria-hidden />
+                  <span>
+                    <span className="text-ink">Rules lock once you trade.</span> Set them freely
+                    any time before this account's first trade of the week. After that they hold
+                    until Monday, so you can't break a rule and then quietly rewrite it. Your
+                    strategies stay editable all week.
+                  </span>
+                </li>
+                <li className="flex gap-2">
+                  <span className="mt-[7px] size-1 shrink-0 rounded-full bg-ink-faint" aria-hidden />
+                  <span>
+                    <span className="text-ink">Deleting is permanent.</span> Removing an account
+                    takes every trade in it with it, and there's no undo. Export first if you
+                    might want the history.
+                  </span>
+                </li>
+              </ul>
+            </div>
           )}
         </DialogBody>
 
         <DialogFooter>
           {isEdit && canDelete && (
-            <Button variant="danger" onClick={remove} disabled={busy} className="sm:mr-auto">
+            <Button
+              variant="danger"
+              onClick={remove}
+              disabled={busy || !confirmMatches}
+              className="sm:mr-auto"
+            >
               <Trash2 aria-hidden />
               Delete
             </Button>

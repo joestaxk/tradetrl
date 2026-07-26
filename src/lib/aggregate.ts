@@ -6,7 +6,8 @@
 
 import { round2 } from './calc'
 import { durationMinutes, sessionOf, type TradingSession } from './dates'
-import type { Trade } from './types'
+import { sessionLabelFor } from './sessions'
+import type { SessionWindow, Trade } from './types'
 
 export interface Stats {
   trades: number
@@ -294,6 +295,16 @@ export function byTag(trades: Trade[]): Breakdown[] {
 
 export function bySession(trades: Trade[]): Breakdown[] {
   return breakdownBy(trades, (t) => sessionOf(t.time))
+}
+
+/**
+ * Performance by the trader's *own* sessions and macros.
+ *
+ * Supersedes the hardcoded Asia/London/New York split: those boundaries are
+ * a guess, and a guess is a poor thing to tell someone their edge is based on.
+ */
+export function byOwnSession(trades: Trade[], windows: SessionWindow[]): Breakdown[] {
+  return breakdownBy(closedOnly(trades), (t) => sessionLabelFor(t.time, windows))
 }
 
 export function byWeekday(trades: Trade[]): Breakdown[] {

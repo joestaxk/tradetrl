@@ -5,27 +5,37 @@ import {
   CircleCheck,
   Loader2,
   NotebookPen,
-  PenLine,
   Sparkles,
+  Target,
 } from 'lucide-react'
 import { Button } from '#/components/ui/button'
-import { Textarea } from '#/components/ui/field'
 import { SegmentedGroup, SegmentedItem, SegmentedShell } from '#/components/ui/toggles'
-import { Card, CardBody, CardHeader, CardTitle, Divider, EmptyState, PageTitle, Skeleton } from '#/components/ui/primitives'
+import {
+  Badge,
+  Card,
+  CardBody,
+  CardHeader,
+  CardTitle,
+  Divider,
+  EmptyState,
+  PageTitle,
+  Skeleton,
+} from '#/components/ui/primitives'
 import { Money, Stat, StatRow } from '#/components/ui/numbers'
 import { EquityCurve } from '#/components/charts/equity-curve'
 import { toast } from '#/components/ui/toast'
 import { useAppStore } from '#/store/app'
-import { useAuth } from '#/lib/auth'
 import { useJournals } from '#/lib/use-journals'
 import { useTrades } from '#/lib/use-trades'
 import { computeStats, equityCurve, maxDrawdown, tradesInRange } from '#/lib/aggregate'
-import { disciplineScore, planVsActual } from '#/lib/patterns'
+import { disciplineScore } from '#/lib/patterns'
+import { biasAlignment, planOutcome, strategyPerformance } from '#/lib/strategies'
+import { useStrategies } from '#/lib/use-strategies'
+import { usePeriodPlan } from '#/lib/use-period-plan'
+import { StrategyPicker } from '#/components/trades/strategy-picker'
 import { formatMoney, formatPct, formatR } from '#/lib/calc'
-import { periodId, periodLabel, periodRange, shiftPeriod, today } from '#/lib/dates'
-import { loadPlan, savePlan } from '#/lib/repo'
+import { periodLabel, periodRange, shiftPeriod, today } from '#/lib/dates'
 import { rulesAreSet } from '#/lib/violations'
-import type { PeriodPlan } from '#/lib/types'
 import { cn } from '#/components/ui/cn'
 
 /**
@@ -36,7 +46,6 @@ import { cn } from '#/components/ui/cn'
  * lets the trader draw the conclusion.
  */
 export function ReviewPage() {
-  const { user } = useAuth()
   const { trades, loading } = useTrades()
 
   const kind = useAppStore((s) => s.reviewPeriod)
@@ -47,7 +56,6 @@ export function ReviewPage() {
   const { active: account } = useJournals()
   const currency = account.currency
   const range = useMemo(() => periodRange(anchor, kind), [anchor, kind])
-  const id = useMemo(() => periodId(anchor, kind), [anchor, kind])
 
   const periodTrades = useMemo(
     () => tradesInRange(trades, range.start, range.end),
@@ -58,55 +66,49 @@ export function ReviewPage() {
   const curve = useMemo(() => equityCurve(periodTrades), [periodTrades])
   const drawdown = useMemo(() => maxDrawdown(periodTrades), [periodTrades])
 
-  const [plan, setPlan] = useState<PeriodPlan | null>(null)
-  const [note, setNote] = useState('')
-  const [planLoading, setPlanLoading] = useState(true)
+  const { active: strategies } = useStrategies()
+  const { plan, loading: planLoading, save: persistPlan } = usePeriodPlan(anchor, kind)
+
+  const [picked, setPicked] = useState<string[]>([])
   const [saving, setSaving] = useState(false)
 
+  // Seed the picker from whatever is already planned for this period.
   useEffect(() => {
-    if (!user) return
-    let cancelled = false
-    setPlanLoading(true)
-    loadPlan(user.uid, id)
-      .then((p) => {
-        if (cancelled) return
-        setPlan(p)
-        setNote(p?.entryModelNote ?? '')
-      })
-      .catch(() => {
-        if (!cancelled) setPlan(null)
-      })
-      .finally(() => {
-        if (!cancelled) setPlanLoading(false)
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [user, id])
+    setPicked(plan?.strategyIds ?? [])
+  }, [plan])
 
-  const diff = useMemo(() => planVsActual(plan, periodTrades), [plan, periodTrades])
+  const perStrategy = useMemo(
+    () => strategyPerformance(periodTrades, strategies, plan),
+    [periodTrades, strategies, plan],
+  )
+  const outcome = useMemo(
+    () => planOutcome(periodTrades, plan, strategies),
+    [periodTrades, plan, strategies],
+  )
+  const weeklyBias = useMemo(() => biasAlignment(periodTrades, 'weekly'), [periodTrades])
+  const dailyBias = useMemo(() => biasAlignment(periodTrades, 'daily'), [periodTrades])
+
+  const planDirty =
+    picked.length !== (plan?.strategyIds.length ?? 0) ||
+    picked.some((id) => !plan?.strategyIds.includes(id))
+
+  const savePlanNow = async () => {
+    setSaving(true)
+    try {
+      await persistPlan(picked, account.riskRules)
+      toast.success('Plan saved')
+    } catch {
+      toast.error("Couldn't save the plan")
+    } finally {
+      setSaving(false)
+    }
+  }
 
   const violating = useMemo(
     () => periodTrades.filter((t) => (t.ruleViolations?.length ?? 0) > 0),
     [periodTrades],
   )
 
-  const saveNote = async () => {
-    if (!user) return
-    setSaving(true)
-    try {
-      await savePlan(user.uid, anchor, kind, note.trim(), account.riskRules)
-      const fresh = await loadPlan(user.uid, id)
-      setPlan(fresh)
-      toast.success('Saved')
-    } catch {
-      toast.error("Couldn't save your note")
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  const dirty = note.trim() !== (plan?.entryModelNote ?? '').trim()
   const isCurrent = periodRange(today(), kind).start === range.start
 
   /*
@@ -289,77 +291,143 @@ export function ReviewPage() {
         </>
       )}
 
-      {/* ---- §6: the entry-model note, in the trader's own words ---- */}
+      {/* ---- what you said you'd trade, and what you actually did ---- */}
       <Card>
         <CardHeader>
           <div>
-            <CardTitle>Your entry model</CardTitle>
+            <CardTitle>This {kind}'s plan</CardTitle>
             <p className="mt-1 text-[13px] leading-relaxed text-ink-muted">
-              Describe how you take a trade, in a few plain steps. No categories, no
-              dropdown — your words.
+              Pick the strategies you mean to trade. Taking something else is never
+              blocked — it gets noted here afterwards, whether it won or lost.
             </p>
           </div>
-          <PenLine className="size-4 shrink-0 text-ink-faint" aria-hidden />
+          <Target className="size-4 shrink-0 text-ink-faint" aria-hidden />
         </CardHeader>
         <CardBody className="flex flex-col gap-3">
           {planLoading ? (
-            <Skeleton className="h-28 rounded-[10px]" />
+            <Skeleton className="h-20 rounded-[10px]" />
+          ) : strategies.length === 0 ? (
+            <p className="text-[13px] leading-relaxed text-ink-muted">
+              You haven't named any strategies yet. Add one or two in Settings and this
+              becomes the panel that tells you which of them actually makes money.
+            </p>
           ) : (
             <>
-              <Textarea
-                value={note}
-                onChange={(e) => setNote(e.target.value)}
-                rows={4}
-                placeholder={
-                  '1. Wait for London to sweep the Asia high or low\n2. Drop to 5m and wait for a reclaim\n3. Enter on the retest, stop past the sweep'
-                }
-                aria-label="Entry model note"
+              <StrategyPicker
+                strategies={strategies}
+                value={undefined}
+                onChange={() => {}}
+                plannedIds={picked}
               />
+              <div className="flex flex-wrap gap-1.5">
+                {strategies.map((st) => {
+                  const on = picked.includes(st.id)
+                  return (
+                    <button
+                      key={st.id}
+                      type="button"
+                      onClick={() =>
+                        setPicked((p) =>
+                          on ? p.filter((x) => x !== st.id) : [...p, st.id],
+                        )
+                      }
+                      className={cn(
+                        'inline-flex min-h-9 items-center gap-1.5 rounded-lg border px-2.5 text-[13px] transition-colors',
+                        on
+                          ? 'border-accent bg-accent-wash text-ink'
+                          : 'border-line bg-raised text-ink-dim hover:border-line-strong hover:text-ink',
+                      )}
+                    >
+                      {on && <CircleCheck className="size-3.5 text-accent" aria-hidden />}
+                      {st.name}
+                    </button>
+                  )
+                })}
+              </div>
               <div className="flex items-center gap-2">
-                <Button variant="primary" size="sm" onClick={saveNote} disabled={!dirty || saving}>
+                <Button
+                  variant="primary"
+                  size="sm"
+                  onClick={savePlanNow}
+                  disabled={!planDirty || saving}
+                >
                   {saving && <Loader2 className="animate-spin" aria-hidden />}
-                  {plan ? 'Update note' : 'Save note'}
+                  {plan ? 'Update plan' : 'Set the plan'}
                 </Button>
-                {!dirty && plan && (
-                  <span className="text-[12px] text-ink-faint">Saved</span>
-                )}
+                {!planDirty && plan && <span className="text-[12px] text-ink-faint">Saved</span>}
               </div>
             </>
           )}
 
-          {diff.length > 0 && (
+          {outcome.verdict && (
             <>
               <Divider className="my-1" />
-              <div className="flex flex-col gap-2">
-                <span className="flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wider text-ink-faint">
-                  <Sparkles className="size-3" aria-hidden />
-                  Your words vs your trades
-                </span>
-                {diff.map((d, i) => (
-                  <p
-                    key={i}
-                    className={cn(
-                      'flex gap-2 text-[13px] leading-relaxed',
-                      d.kind === 'drift' ? 'text-caution' : 'text-ink-dim',
-                    )}
-                  >
-                    <span
-                      className={cn(
-                        'mt-[7px] size-1.5 shrink-0 rounded-full',
-                        d.kind === 'match' && 'bg-win',
-                        d.kind === 'drift' && 'bg-caution',
-                        d.kind === 'neutral' && 'bg-ink-faint',
-                      )}
-                      aria-hidden
-                    />
-                    {d.line}
-                  </p>
-                ))}
-              </div>
+              <p className="flex gap-2 text-[13px] leading-relaxed text-ink-dim">
+                <Sparkles className="mt-0.5 size-3.5 shrink-0 text-ink-faint" aria-hidden />
+                {outcome.verdict}
+              </p>
             </>
           )}
         </CardBody>
       </Card>
+
+      {/* ---- which setups actually paid ---- */}
+      {perStrategy.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>By strategy</CardTitle>
+          </CardHeader>
+          <CardBody>
+            <ul className="flex flex-col gap-1.5">
+              {perStrategy.map((row, i) => (
+                <li
+                  key={row.strategyId}
+                  className="stagger flex items-center gap-3 rounded-lg px-1 py-1.5"
+                  style={{ '--i': i } as React.CSSProperties}
+                >
+                  <span className="flex min-w-0 flex-1 items-center gap-2">
+                    <span className="truncate text-[13px] font-medium text-ink-dim">
+                      {row.name}
+                    </span>
+                    {row.offPlanCount > 0 && (
+                      <Badge tone="neutral" className="shrink-0">
+                        {row.offPlanCount} off plan
+                      </Badge>
+                    )}
+                  </span>
+                  <span className="shrink-0 text-[12px] text-ink-faint tnum">
+                    {row.stats.trades}
+                  </span>
+                  <span className="w-14 shrink-0 text-right text-[12px] text-ink-muted tnum">
+                    {row.stats.winRate === null ? '—' : formatPct(row.stats.winRate, 0)}
+                  </span>
+                  <span className="w-24 shrink-0 text-right text-[13px] font-medium">
+                    <Money value={row.stats.pnl} currency={currency} compact />
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </CardBody>
+        </Card>
+      )}
+
+      {/* ---- did trading with your own read pay? ---- */}
+      {(weeklyBias.line || dailyBias.line) && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Your bias vs your results</CardTitle>
+          </CardHeader>
+          <CardBody className="flex flex-col gap-2">
+            {[weeklyBias, dailyBias].map((b, i) =>
+              b.line ? (
+                <p key={i} className="text-[13px] leading-relaxed text-ink-dim">
+                  {b.line}
+                </p>
+              ) : null,
+            )}
+          </CardBody>
+        </Card>
+      )}
     </div>
   )
 }

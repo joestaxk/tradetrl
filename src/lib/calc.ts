@@ -203,20 +203,47 @@ export function formatMoney(
 }
 
 /**
- * Ultra-compact signed figure for dense grids — `+880`, `−95`, `+1.2k`.
+ * The currency's symbol on its own — '$', '£', 'ZAR'.
  *
- * Drops the currency symbol deliberately: at 320px a calendar cell is ~38px
- * wide, and `+$880.00` truncates to `+$…`, which is worse than no figure at
- * all. The currency is established by the stat tiles above the grid.
+ * Intl gives no direct accessor, so it is recovered by formatting zero and
+ * stripping the digits. Cached because a calendar renders 42 cells and this
+ * would otherwise construct a formatter for every one of them.
  */
-export function formatMoneyMicro(n: number): string {
+const symbolCache = new Map<string, string>()
+
+export function currencySymbol(currency = 'USD'): string {
+  const hit = symbolCache.get(currency)
+  if (hit !== undefined) return hit
+  let symbol = currency
+  try {
+    symbol = new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency,
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0,
+    })
+      .format(0)
+      .replace(/[\d\s,.]/g, '')
+  } catch {
+    // An unknown code is better shown as itself than as nothing.
+  }
+  symbolCache.set(currency, symbol)
+  return symbol
+}
+
+/**
+ * The tightest readable money figure, for a calendar cell at 320px.
+ * '+$1.2k' / '−$260' — signed, symboled, and never more than six characters.
+ */
+export function formatMoneyMicro(n: number, currency = 'USD'): string {
   const sign = n > 0 ? '+' : n < 0 ? '−' : ''
+  const sym = currencySymbol(currency)
   const abs = Math.abs(n)
   if (abs >= 1000) {
     const k = abs / 1000
-    return `${sign}${k >= 10 ? Math.round(k) : k.toFixed(1)}k`
+    return `${sign}${sym}${k >= 10 ? Math.round(k) : k.toFixed(1)}k`
   }
-  return `${sign}${Math.round(abs)}`
+  return `${sign}${sym}${Math.round(abs)}`
 }
 
 export function formatR(n: number): string {

@@ -191,3 +191,102 @@ describe('weekend rule', () => {
     expect(rulesAreSet({ noWeekendTrading: false })).toBe(false)
   })
 })
+
+describe('sessions you trade', () => {
+  // The trader's own windows, not hardcoded boundaries.
+  const windows = [
+    { id: 'asia', name: 'Asia', start: '00:00', end: '07:00' },
+    { id: 'london', name: 'London', start: '07:00', end: '12:00' },
+    { id: 'ny', name: 'New York', start: '12:00', end: '21:00' },
+  ]
+
+  it('flags an Asian trade when you said you trade New York', () => {
+    const v = computeViolations(
+      { pair: 'EURUSD', date: '2026-07-14', time: '02:30' },
+      { rules: { allowedSessionIds: ['ny'] }, sessionWindows: windows },
+    )
+    expect(v.map((x) => x.code)).toEqual(['session-not-allowed'])
+    expect(v[0].message).toBe('Taken in Asia, and you trade New York.')
+  })
+
+  it('names every session you declared', () => {
+    const v = computeViolations(
+      { pair: 'EURUSD', date: '2026-07-14', time: '02:30' },
+      { rules: { allowedSessionIds: ['london', 'ny'] }, sessionWindows: windows },
+    )
+    expect(v[0].message).toBe('Taken in Asia, and you trade London and New York.')
+  })
+
+  it('says nothing when the trade is in a session you trade', () => {
+    expect(
+      computeViolations(
+        { pair: 'EURUSD', date: '2026-07-14', time: '14:00' },
+        { rules: { allowedSessionIds: ['ny'] }, sessionWindows: windows },
+      ),
+    ).toEqual([])
+  })
+
+  it('treats an empty list as no limit, not as nothing allowed', () => {
+    expect(
+      computeViolations(
+        { pair: 'EURUSD', date: '2026-07-14', time: '02:30' },
+        { rules: { allowedSessionIds: [] }, sessionWindows: windows },
+      ),
+    ).toEqual([])
+  })
+
+  it('never flags a trade with no clock time', () => {
+    // Absence of data is not evidence of drift.
+    expect(
+      computeViolations(
+        { pair: 'EURUSD', date: '2026-07-14' },
+        { rules: { allowedSessionIds: ['ny'] }, sessionWindows: windows },
+      ),
+    ).toEqual([])
+  })
+
+  it('uses the trader’s own boundaries, not ours', () => {
+    // This trader's "London" runs to 18:00. A 14:00 trade is inside it, even
+    // though a hardcoded London would have ended hours earlier.
+    const theirs = [{ id: 'london', name: 'London', start: '07:00', end: '18:00' }]
+    expect(
+      computeViolations(
+        { pair: 'EURUSD', date: '2026-07-14', time: '14:00' },
+        { rules: { allowedSessionIds: ['london'] }, sessionWindows: theirs },
+      ),
+    ).toEqual([])
+  })
+
+  it('handles a session that wraps past midnight', () => {
+    const overnight = [{ id: 'asia', name: 'Asia', start: '22:00', end: '06:00' }]
+    expect(
+      computeViolations(
+        { pair: 'USDJPY', date: '2026-07-14', time: '23:30' },
+        { rules: { allowedSessionIds: ['asia'] }, sessionWindows: overnight },
+      ),
+    ).toEqual([])
+  })
+
+  it('says nothing without the windows to judge against', () => {
+    expect(
+      computeViolations(
+        { pair: 'EURUSD', date: '2026-07-14', time: '02:30' },
+        { rules: { allowedSessionIds: ['ny'] } },
+      ),
+    ).toEqual([])
+  })
+
+  it('counts as a configured rule on its own', () => {
+    expect(rulesAreSet({ allowedSessionIds: ['ny'] })).toBe(true)
+    expect(rulesAreSet({ allowedSessionIds: [] })).toBe(false)
+  })
+
+  it('stays non-shaming', () => {
+    const v = computeViolations(
+      { pair: 'EURUSD', date: '2026-07-14', time: '02:30' },
+      { rules: { allowedSessionIds: ['ny'] }, sessionWindows: windows },
+    )
+    expect(v[0].message).not.toMatch(/!/)
+    expect(v[0].message.toLowerCase()).not.toMatch(/never|must|should|bad|wrong/)
+  })
+})

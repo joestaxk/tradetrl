@@ -127,7 +127,7 @@ export function JournalPage() {
         </StatRow>
       )}
 
-      <OpenTrades trades={trades} onResolve={openEditTrade} />
+      <OpenTrades trades={trades} onOpenFull={openEditTrade} />
 
       {noTradesEver ? (
         <div className="rounded-2xl border border-line bg-panel">

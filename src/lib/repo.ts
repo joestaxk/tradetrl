@@ -34,6 +34,8 @@ import type {
   Journal,
   PeriodPlan,
   RiskRules,
+  SessionWindow,
+  Strategy,
   Trade,
   TradeDraft,
   UserDoc,
@@ -244,6 +246,33 @@ export async function ensureDefaultJournal(uid: string): Promise<void> {
   await setDoc(ref, { name: 'My journal', createdAt: Date.now(), kind: 'personal' })
 }
 
+/**
+ * Live journals.
+ *
+ * A one-shot fetch was the reason a settings change didn't show until you
+ * changed tab or reloaded: nothing told the rest of the app the document had
+ * moved. Subscribing means an edit propagates the moment Firestore accepts it,
+ * and the optimistic layer in `useJournals` covers the round trip before that.
+ */
+export function subscribeJournals(
+  uid: string,
+  onData: (rows: Journal[]) => void,
+  onError?: (e: Error) => void,
+): () => void {
+  return onSnapshot(
+    query(journalsCol(uid), orderBy('createdAt', 'asc')),
+    (snap) => {
+      const rows = snap.docs.map((d) => toJournal(d.id, d.data()))
+      onData(
+        rows.length > 0
+          ? rows
+          : [{ id: DEFAULT_JOURNAL_ID, name: 'My journal', createdAt: Date.now() }],
+      )
+    },
+    (e) => onError?.(e),
+  )
+}
+
 export async function listJournals(uid: string): Promise<Journal[]> {
   const snap = await getDocs(query(journalsCol(uid), orderBy('createdAt', 'asc')))
   const rows = snap.docs.map((d) => toJournal(d.id, d.data()))
@@ -260,7 +289,14 @@ function toJournal(id: string, data: Record<string, unknown>): Journal {
     name: (data.name as string) ?? 'Journal',
     createdAt: toMillis(data.createdAt),
     kind: data.kind as string | undefined,
-    accountSize: data.accountSize as number | undefined,
+    // `accountSize` was the old field name and meant the same thing. Reading
+    // it as a fallback keeps accounts created before starting balances existed
+    // showing the right number instead of silently reverting to blank.
+    startingBalance:
+      (data.startingBalance as number | undefined) ??
+      (data.accountSize as number | undefined),
+    startedOn: data.startedOn as string | undefined,
+    riskBasis: data.riskBasis === 'current' ? 'current' : 'starting',
     currency: data.currency as string | undefined,
     riskRules: (data.riskRules as Journal['riskRules']) ?? undefined,
     archivedAt: data.archivedAt ? toMillis(data.archivedAt) : undefined,
@@ -385,6 +421,11 @@ export function subscribeTrades(
 export interface SaveTradeContext {
   rules: RiskRules
   accountSize?: number
+  /** Strategies planned for the period this trade falls in. */
+  plannedStrategyIds?: string[]
+  strategyNameOf?: (id: string) => string | undefined
+  /** The trader's own sessions, so the session check uses their boundaries. */
+  sessionWindows?: SessionWindow[]
   /** Trades already logged that same day, for the daily-cap check. */
   sameDayTradeCount?: number
 }
@@ -423,13 +464,34 @@ export async function saveTrade(
   // Risk rules are about what you committed to when you entered, so they are
   // computed for open trades too — the size and the pair are already decided.
   const violations = computeViolations(
-    { pair: draft.pair, date: draft.date, riskPct, riskAmount },
+    {
+      pair: draft.pair,
+      date: draft.date,
+      time: draft.time,
+      strategyId: draft.strategyId,
+      riskPct,
+      riskAmount,
+    },
     {
       rules: ctx.rules,
       accountSize: ctx.accountSize,
       sameDayTradeCount: ctx.sameDayTradeCount,
+      plannedStrategyIds: ctx.plannedStrategyIds,
+      strategyNameOf: ctx.strategyNameOf,
+      sessionWindows: ctx.sessionWindows,
     },
   )
+
+  /*
+    Whether this trade was outside the period's plan is decided once, here, and
+    stored. Recomputing it on read would let a trader edit next week's plan and
+    silently rewrite whether last week's trades were on plan — which is exactly
+    the kind of retroactive tidying a journal exists to prevent.
+  */
+  const offPlan =
+    (ctx.plannedStrategyIds?.length ?? 0) > 0 &&
+    Boolean(draft.strategyId) &&
+    !ctx.plannedStrategyIds!.includes(draft.strategyId!)
 
   const payload = clean({
     ...draft,
@@ -440,6 +502,7 @@ export async function saveTrade(
     riskPct,
     riskAmount,
     rMultiple: isOpen ? undefined : (draft.rMultiple ?? figures.rMultiple ?? undefined),
+    offPlan: offPlan || undefined,
     // Only stamped once, when it stops being open.
     closedAt: isOpen ? undefined : (draft.closedAt ?? Date.now()),
     ruleViolations: violations,
@@ -452,6 +515,17 @@ export async function saveTrade(
   }
   const ref = doc(tradesCol(uid))
   await setDoc(ref, { ...payload, createdAt: serverTimestamp() })
+
+  /*
+    Freeze the period's rules now that it has a trade in it. Done after the
+    write and deliberately not awaited into the failure path: a locking hiccup
+    must never cost someone their trade, which is the thing they actually came
+    here to save.
+  */
+  void lockPeriodRules(uid, draft.date, 'week', ctx.rules, journalId).catch((e) => {
+    console.error('[repo] could not lock period rules:', e)
+  })
+
   return ref.id
 }
 
@@ -469,14 +543,20 @@ function plansCol(uid: string) {
 export async function loadPlan(uid: string, id: string): Promise<PeriodPlan | null> {
   const snap = await getDoc(doc(plansCol(uid), id))
   if (!snap.exists()) return null
-  const d = snap.data()
+  return toPlan(id, snap.data())
+}
+
+function toPlan(id: string, d: Record<string, unknown>): PeriodPlan {
   return {
     id,
     kind: d.kind === 'month' ? 'month' : 'week',
-    periodStart: d.periodStart,
-    periodEnd: d.periodEnd,
-    entryModelNote: d.entryModelNote ?? '',
-    riskRuleSnapshot: d.riskRuleSnapshot ?? {},
+    periodStart: d.periodStart as string,
+    periodEnd: d.periodEnd as string,
+    strategyIds: (d.strategyIds as string[]) ?? [],
+    riskRuleSnapshot: (d.riskRuleSnapshot as RiskRules) ?? {},
+    lockedAt: d.lockedAt ? toMillis(d.lockedAt) : undefined,
+    lockedAccounts: (d.lockedAccounts as string[]) ?? undefined,
+    note: d.note as string | undefined,
     createdAt: toMillis(d.createdAt),
     updatedAt: d.updatedAt ? toMillis(d.updatedAt) : undefined,
   }
@@ -484,42 +564,42 @@ export async function loadPlan(uid: string, id: string): Promise<PeriodPlan | nu
 
 export async function listPlans(uid: string): Promise<PeriodPlan[]> {
   const snap = await getDocs(query(plansCol(uid), orderBy('periodStart', 'desc'), limit(120)))
-  return snap.docs.map((d) => ({
-    id: d.id,
-    kind: d.data().kind === 'month' ? 'month' : 'week',
-    periodStart: d.data().periodStart,
-    periodEnd: d.data().periodEnd,
-    entryModelNote: d.data().entryModelNote ?? '',
-    riskRuleSnapshot: d.data().riskRuleSnapshot ?? {},
-    createdAt: toMillis(d.data().createdAt),
-    updatedAt: d.data().updatedAt ? toMillis(d.data().updatedAt) : undefined,
-  }))
+  return snap.docs.map((d) => toPlan(d.id, d.data()))
 }
 
 /**
- * Save the entry-model note for the period containing `anchorDay`. The risk
- * rules in force are snapshotted at write time so a later settings change
- * doesn't rewrite history in the review screen.
+ * Declare which strategies you intend to trade this period.
+ *
+ * The risk rules in force are snapshotted here, so a later settings change
+ * can't retroactively rewrite what you were measured against.
  */
 export async function savePlan(
   uid: string,
   anchorDay: string,
   kind: 'week' | 'month',
-  entryModelNote: string,
+  strategyIds: string[],
   rules: RiskRules,
+  note?: string,
 ): Promise<string> {
   const id = periodId(anchorDay, kind)
   const { start, end } = periodRange(anchorDay, kind)
   const ref = doc(plansCol(uid), id)
   const existing = await getDoc(ref)
+
   await setDoc(
     ref,
     clean({
       kind,
       periodStart: start,
       periodEnd: end,
-      entryModelNote,
-      riskRuleSnapshot: existing.exists() ? existing.data().riskRuleSnapshot ?? rules : rules,
+      strategyIds,
+      // Snapshot the rules only on creation. Re-snapshotting on every edit
+      // would let today's rules silently become the yardstick for trades
+      // logged days ago.
+      riskRuleSnapshot: existing.exists()
+        ? ((existing.data().riskRuleSnapshot as RiskRules) ?? rules)
+        : rules,
+      note,
       createdAt: existing.exists() ? existing.data().createdAt : Date.now(),
       updatedAt: Date.now(),
     }),
@@ -527,3 +607,125 @@ export async function savePlan(
   )
   return id
 }
+
+/**
+ * Freeze the period's risk rules, called when its first trade is logged.
+ *
+ * Idempotent: once stamped it never moves, so logging the tenth trade of the
+ * week doesn't reset the clock. Creates the plan if the trader never opened
+ * the review screen — the lock has to hold either way.
+ */
+export async function lockPeriodRules(
+  uid: string,
+  anchorDay: string,
+  kind: 'week' | 'month',
+  rules: RiskRules,
+  journalId?: string,
+): Promise<void> {
+  const id = periodId(anchorDay, kind)
+  const { start, end } = periodRange(anchorDay, kind)
+  const ref = doc(plansCol(uid), id)
+  const existing = await getDoc(ref)
+
+  if (existing.exists()) {
+    const locked = (existing.data().lockedAccounts as string[] | undefined) ?? []
+    if (journalId && locked.includes(journalId)) return
+    await updateDoc(ref, {
+      lockedAt: existing.data().lockedAt ?? Date.now(),
+      lockedAccounts: journalId ? [...locked, journalId] : locked,
+    })
+    return
+  }
+
+  await setDoc(
+    ref,
+    clean({
+      kind,
+      periodStart: start,
+      periodEnd: end,
+      strategyIds: [],
+      riskRuleSnapshot: rules,
+      lockedAt: Date.now(),
+      lockedAccounts: journalId ? [journalId] : [],
+      createdAt: Date.now(),
+    }),
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Strategies — shared across every account (see lib/strategies.ts)
+
+function strategiesCol(uid: string) {
+  return collection(db(), 'users', uid, 'strategies')
+}
+
+export async function listStrategies(uid: string): Promise<Strategy[]> {
+  const snap = await getDocs(query(strategiesCol(uid), orderBy('createdAt', 'asc')))
+  return snap.docs.map((d) => ({
+    id: d.id,
+    name: (d.data().name as string) ?? 'Untitled',
+    entry: d.data().entry as string | undefined,
+    createdAt: toMillis(d.data().createdAt),
+    archivedAt: d.data().archivedAt ? toMillis(d.data().archivedAt) : undefined,
+  }))
+}
+
+export function subscribeStrategies(
+  uid: string,
+  onData: (rows: Strategy[]) => void,
+  onError?: (e: Error) => void,
+): () => void {
+  return onSnapshot(
+    query(strategiesCol(uid), orderBy('createdAt', 'asc')),
+    (snap) =>
+      onData(
+        snap.docs.map((d) => ({
+          id: d.id,
+          name: (d.data().name as string) ?? 'Untitled',
+          entry: d.data().entry as string | undefined,
+          createdAt: toMillis(d.data().createdAt),
+          archivedAt: d.data().archivedAt ? toMillis(d.data().archivedAt) : undefined,
+        })),
+      ),
+    (e) => onError?.(e),
+  )
+}
+
+export async function createStrategy(
+  uid: string,
+  input: { name: string; entry?: string },
+): Promise<Strategy> {
+  const ref = doc(strategiesCol(uid))
+  const row = { name: input.name.trim(), entry: input.entry?.trim(), createdAt: Date.now() }
+  await setDoc(ref, clean(row))
+  return { id: ref.id, ...row }
+}
+
+export async function updateStrategy(
+  uid: string,
+  id: string,
+  patch: Partial<Pick<Strategy, 'name' | 'entry'>>,
+): Promise<void> {
+  const payload: Record<string, unknown> = {}
+  for (const [k, v] of Object.entries(patch)) {
+    payload[k] = v === undefined ? deleteField() : v
+  }
+  if (Object.keys(payload).length === 0) return
+  await updateDoc(doc(strategiesCol(uid), id), payload)
+}
+
+/**
+ * Archive rather than delete.
+ *
+ * Trades reference a strategy by id. Hard-deleting would orphan every trade
+ * that used it and silently erase the history the review is built on, so a
+ * retired strategy stops appearing in the picker and keeps its past intact.
+ */
+export async function archiveStrategy(uid: string, id: string): Promise<void> {
+  await updateDoc(doc(strategiesCol(uid), id), { archivedAt: Date.now() })
+}
+
+export async function restoreStrategy(uid: string, id: string): Promise<void> {
+  await updateDoc(doc(strategiesCol(uid), id), { archivedAt: deleteField() })
+}
+

@@ -68,6 +68,7 @@ function Preview() {
       ),
       loading: false,
       switchTo: async (id: string) => setActiveId(id),
+      patch: async () => {},
       reload: async () => {},
     }),
     [journals, activeId, profile.prefs],

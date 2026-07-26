@@ -34,30 +34,30 @@ const user = (over: Partial<UserDoc> = {}): UserDoc => ({
 describe('resolveJournal', () => {
   it('prefers the account’s own balance over the user default', () => {
     const r = resolveJournal(
-      journal({ accountSize: 50_000 }),
+      journal({ startingBalance: 50_000 }),
       makePrefs({ accountSize: 10_000 }),
     )
-    expect(r.accountSize).toBe(50_000)
+    expect(r.startingBalance).toBe(50_000)
   })
 
   it('falls back to the user default when the account has none', () => {
     const r = resolveJournal(journal(), makePrefs({ accountSize: 10_000 }))
-    expect(r.accountSize).toBe(10_000)
+    expect(r.startingBalance).toBe(10_000)
   })
 
   it('respects an explicit zero rather than falling through to the default', () => {
     // `||` here would silently substitute the user's balance for a blown
     // account, making every risk percentage wrong.
-    const r = resolveJournal(journal({ accountSize: 0 }), makePrefs({ accountSize: 10_000 }))
-    expect(r.accountSize).toBe(0)
+    const r = resolveJournal(journal({ startingBalance: 0 }), makePrefs({ accountSize: 10_000 }))
+    expect(r.startingBalance).toBe(0)
   })
 
   it('keeps two accounts’ balances genuinely separate', () => {
     const prefs = makePrefs({ accountSize: 10_000 })
-    const prop = resolveJournal(journal({ id: 'a', accountSize: 50_000 }), prefs)
-    const personal = resolveJournal(journal({ id: 'b', accountSize: 100_000 }), prefs)
-    expect(prop.accountSize).toBe(50_000)
-    expect(personal.accountSize).toBe(100_000)
+    const prop = resolveJournal(journal({ id: 'a', startingBalance: 50_000 }), prefs)
+    const personal = resolveJournal(journal({ id: 'b', startingBalance: 100_000 }), prefs)
+    expect(prop.startingBalance).toBe(50_000)
+    expect(personal.startingBalance).toBe(100_000)
   })
 
   it('resolves currency with a USD floor', () => {
@@ -133,7 +133,7 @@ describe('labels', () => {
 
   it('summarises an account compactly for the switcher', () => {
     expect(
-      journalSubtitle(resolveJournal(journal({ accountSize: 50_000, kind: 'prop' }), makePrefs())),
+      journalSubtitle(resolveJournal(journal({ startingBalance: 50_000, kind: 'prop' }), makePrefs())),
     ).toBe('$50K · Prop firm')
   })
 

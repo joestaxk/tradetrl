@@ -25,7 +25,9 @@ export function resolveJournal(
     kind: journal?.kind,
     // `??` not `||`, so an explicit 0 is respected rather than silently
     // falling through to the user default.
-    accountSize: journal?.accountSize ?? prefs?.accountSize,
+    startingBalance: journal?.startingBalance ?? prefs?.accountSize,
+    startedOn: journal?.startedOn,
+    riskBasis: journal?.riskBasis ?? 'starting',
     currency: journal?.currency ?? prefs?.currency ?? 'USD',
     riskRules: journal?.riskRules ?? prefs?.riskRules ?? {},
   }
@@ -68,8 +70,8 @@ export function kindLabel(kind: string | undefined): string | null {
  */
 export function journalSubtitle(journal: ResolvedJournal): string {
   const bits: string[] = []
-  if (typeof journal.accountSize === 'number' && journal.accountSize > 0) {
-    bits.push(compactAmount(journal.accountSize, journal.currency))
+  if (typeof journal.startingBalance === 'number' && journal.startingBalance > 0) {
+    bits.push(compactAmount(journal.startingBalance, journal.currency))
   }
   const label = kindLabel(journal.kind)
   if (label) bits.push(label)

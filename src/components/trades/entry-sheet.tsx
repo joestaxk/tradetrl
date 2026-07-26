@@ -5,7 +5,6 @@ import {
   Hourglass,
   Link2,
   Loader2,
-  Tag,
   Trash2,
   TrendingDown,
   TrendingUp,
@@ -35,7 +34,18 @@ import { isCurated } from '#/lib/instruments'
 import { useFxRate } from '#/lib/use-fx-rate'
 import { PairCombobox } from '#/components/trades/pair-combobox'
 import { RiskReadout } from '#/components/trades/risk-readout'
-import type { Direction, Outcome, TradeDraft } from '#/lib/types'
+import { useStrategies } from '#/lib/use-strategies'
+import { usePeriodPlan } from '#/lib/use-period-plan'
+import { accountStanding, riskAllowance } from '#/lib/balance'
+import { computeFromR } from '#/lib/rr'
+import { RInput } from '#/components/trades/r-input'
+import { ChartLinks } from '#/components/trades/chart-links'
+import { ReasonChips } from '#/components/trades/reason-chips'
+import { chartsOf, normalizeChartUrl, timeframeVocabulary } from '#/lib/charts'
+import { sessionWindowsOf } from '#/lib/sessions'
+import { StrategyPicker } from '#/components/trades/strategy-picker'
+import { TagInput, tagVocabulary } from '#/components/trades/tag-input'
+import type { ChartRef, Direction, Outcome, TradeDraft } from '#/lib/types'
 import { cn } from '#/components/ui/cn'
 
 /** Parse a user-typed number, tolerating blanks, commas and stray spaces. */
@@ -66,13 +76,15 @@ interface FormState {
   stopPrice: string
   targetPrice: string
   riskAmount: string
+  rValue: string
+  strategyId?: string
   manualPipValue: string
   closeDate: string
   closeTime: string
-  beforeChartUrl: string
-  afterChartUrl: string
+  charts: ChartRef[]
+  reasonTags: string[]
   reason: string
-  tags: string
+  tags: string[]
 }
 
 const BLANK: FormState = {
@@ -88,13 +100,15 @@ const BLANK: FormState = {
   stopPrice: '',
   targetPrice: '',
   riskAmount: '',
+  rValue: '',
+  strategyId: undefined,
   manualPipValue: '',
   closeDate: '',
   closeTime: '',
-  beforeChartUrl: '',
-  afterChartUrl: '',
+  charts: [],
+  reasonTags: [],
   reason: '',
-  tags: '',
+  tags: [],
 }
 
 /** Local 'HH:mm' now — prefilled when resolving, so duration is one tap. */
@@ -122,6 +136,19 @@ export function TradeEntrySheet() {
   const detailed = profile?.prefs.entryDetailLevel === 'detailed'
   const { active: account } = useJournals()
   const currency = account.currency
+  const { active: strategies } = useStrategies()
+
+  // One R is the account's own risk allowance, so R converts to real money
+  // against the right balance and the right basis.
+  const standing = useMemo(() => accountStanding(account, trades), [account, trades])
+  const perR = useMemo(
+    () => riskAllowance(standing, account.riskRules.maxRiskPerTradePct),
+    [standing, account.riskRules.maxRiskPerTradePct],
+  )
+  const tagOptions = useMemo(() => tagVocabulary(trades), [trades])
+  const knownTimeframes = useMemo(() => timeframeVocabulary(trades), [trades])
+  const sessionWindows = useMemo(() => sessionWindowsOf(profile?.prefs), [profile?.prefs])
+
 
   const [form, setForm] = useState<FormState>(BLANK)
   const [busy, setBusy] = useState(false)
@@ -152,10 +179,13 @@ export function TradeEntrySheet() {
         manualPipValue: editing.pipValueUsed?.toString() ?? '',
         closeDate: editing.closeDate ?? '',
         closeTime: editing.closeTime ?? '',
-        beforeChartUrl: editing.beforeChartUrl ?? '',
-        afterChartUrl: editing.afterChartUrl ?? '',
+        charts: chartsOf(editing),
+        reasonTags: editing.reasonTags ?? [],
         reason: editing.reason ?? '',
-        tags: (editing.tags ?? []).join(', '),
+        rValue:
+          typeof editing.rMultiple === 'number' ? String(Math.abs(editing.rMultiple)) : '',
+        strategyId: editing.strategyId,
+        tags: editing.tags ?? [],
       })
       // Reopening a still-open trade is almost always to resolve it, so the
       // detail block starts expanded — the close time lives in there.
@@ -167,6 +197,11 @@ export function TradeEntrySheet() {
       setCustomPair(false)
     }
   }, [open, editing, entryDate, detailed])
+
+  // Which strategies were declared for the period this trade falls in. Used
+  // only to mark deviation — never to restrict what can be selected.
+  const { plan } = usePeriodPlan(form.date)
+  const plannedStrategyIds = plan?.strategyIds ?? []
 
   const set = <K extends keyof FormState>(key: K, value: FormState[K]) =>
     setForm((f) => ({ ...f, [key]: value }))
@@ -202,15 +237,35 @@ export function TradeEntrySheet() {
   /** Was this an open trade that the trader is now resolving? */
   const resolving = editing?.status === 'open' && !isOpen
 
+  /**
+   * R is the source of truth on the quick form; money on the detailed one.
+   *
+   * A trader logging minimally states "+2R" and the money follows from their
+   * own risk allowance. A trader logging in detail has a real broker figure,
+   * and that must always win over anything we derive.
+   */
+  const fromR = useMemo(
+    () =>
+      computeFromR({
+        outcome: form.result === 'open' ? 'flat' : form.result,
+        r: num(form.rValue),
+        riskAmount: perR ?? undefined,
+      }),
+    [form.result, form.rValue, perR],
+  )
+
   const signedAmount = useMemo(() => {
     if (isOpen) return 0
-    const a = num(form.amount)
-    if (a === undefined) return undefined
-    const abs = Math.abs(a)
-    if (form.result === 'loss') return -abs
-    if (form.result === 'flat') return 0
-    return abs
-  }, [form.amount, form.result, isOpen])
+    const typed = num(form.amount)
+    if (typed !== undefined) {
+      const abs = Math.abs(typed)
+      if (form.result === 'loss') return -abs
+      if (form.result === 'flat') return 0
+      return abs
+    }
+    // Nothing typed: fall back to what R implies, if it implies anything.
+    return fromR.pnl ?? undefined
+  }, [form.amount, form.result, isOpen, fromR.pnl])
 
   // Prefill the close clock the moment a result is picked, so recording the
   // duration costs nothing — but only once, so an edit never overwrites it.
@@ -250,7 +305,7 @@ export function TradeEntrySheet() {
         stopPrice: num(form.stopPrice),
         lotSize: num(form.lotSize),
         accountCurrency,
-        accountSize: account.accountSize,
+        accountSize: standing.riskBase ?? undefined,
         fxRate: fx.rate ?? undefined,
         manualPipValue: num(form.manualPipValue),
       }),
@@ -261,7 +316,7 @@ export function TradeEntrySheet() {
       form.lotSize,
       form.manualPipValue,
       accountCurrency,
-      account.accountSize,
+      standing.riskBase ?? undefined,
       fx.rate,
     ],
   )
@@ -270,14 +325,14 @@ export function TradeEntrySheet() {
 
   /** Lots that would land exactly on the trader's own risk limit. */
   const suggestedLots = useMemo(() => {
-    const budget = riskBudgetFrom(account.accountSize, maxRiskPct)
+    const budget = riskBudgetFrom(standing.riskBase ?? undefined, maxRiskPct)
     if (budget === null) return null
     const lots = suggestLotSize({
       pair: form.pair,
       entryPrice: num(form.entryPrice),
       stopPrice: num(form.stopPrice),
       accountCurrency,
-      accountSize: account.accountSize,
+      accountSize: standing.riskBase ?? undefined,
       fxRate: fx.rate ?? undefined,
       manualPipValue: num(form.manualPipValue),
       riskBudget: budget,
@@ -291,7 +346,7 @@ export function TradeEntrySheet() {
     form.lotSize,
     form.manualPipValue,
     accountCurrency,
-    account.accountSize,
+    standing.riskBase ?? undefined,
     maxRiskPct,
     fx.rate,
   ])
@@ -307,9 +362,9 @@ export function TradeEntrySheet() {
         stopPrice: num(form.stopPrice),
         lotSize: num(form.lotSize),
         riskAmount: num(form.riskAmount),
-        accountSize: account.accountSize,
+        accountSize: standing.riskBase ?? undefined,
       }),
-    [form, account.accountSize],
+    [form, standing.riskBase ?? undefined],
   )
 
   const canApply =
@@ -336,6 +391,12 @@ export function TradeEntrySheet() {
         (t) => t.date === form.date && t.id !== editing?.id,
       ).length
 
+      // Empty rows are just an abandoned "add another"; a broken URL is kept
+      // out rather than stored as something that won't open.
+      const cleanedCharts = form.charts
+        .map((c) => ({ ...c, url: normalizeChartUrl(c.url) ?? '' }))
+        .filter((c) => c.url !== '')
+
       const draft: TradeDraft = {
         date: form.date,
         time: form.time || undefined,
@@ -359,13 +420,11 @@ export function TradeEntrySheet() {
         // Close clock is meaningless on a trade that hasn't closed.
         closeDate: isOpen ? undefined : form.closeDate || undefined,
         closeTime: isOpen ? undefined : form.closeTime || undefined,
-        beforeChartUrl: form.beforeChartUrl.trim() || undefined,
-        afterChartUrl: form.afterChartUrl.trim() || undefined,
+        charts: cleanedCharts.length > 0 ? cleanedCharts : undefined,
+        reasonTags: form.reasonTags.length > 0 ? form.reasonTags : undefined,
+        strategyId: form.strategyId,
         reason: form.reason.trim() || undefined,
-        tags: form.tags
-          .split(',')
-          .map((t) => t.trim())
-          .filter(Boolean),
+        tags: form.tags,
       }
 
       await saveTrade(
@@ -374,7 +433,10 @@ export function TradeEntrySheet() {
         draft,
         {
           rules: account.riskRules,
-          accountSize: account.accountSize,
+          plannedStrategyIds,
+          strategyNameOf: (id) => strategies.find((x) => x.id === id)?.name,
+          sessionWindows,
+          accountSize: standing.riskBase ?? undefined,
           sameDayTradeCount,
         },
         editing?.id,
@@ -519,18 +581,36 @@ export function TradeEntrySheet() {
                 )}
               </Field>
             ) : (
-              <Field label={form.result === 'loss' ? 'Amount lost' : 'Amount made'}>
-                {(id) => (
-                  <NumberInput
-                    id={id}
-                    prefix={form.result === 'loss' ? '−' : '+'}
-                    placeholder="0.00"
-                    value={form.amount}
-                    onChange={(e) => set('amount', e.target.value)}
-                    disabled={form.result === 'flat'}
-                  />
-                )}
-              </Field>
+              detailed ? (
+                <Field label={form.result === 'loss' ? 'Amount lost' : 'Amount made'}>
+                  {(id) => (
+                    <NumberInput
+                      id={id}
+                      prefix={form.result === 'loss' ? '−' : '+'}
+                      placeholder="0.00"
+                      value={form.amount}
+                      onChange={(e) => set('amount', e.target.value)}
+                      disabled={form.result === 'flat'}
+                    />
+                  )}
+                </Field>
+              ) : (
+                <Field
+                  label="How much"
+                  tip="In R — how many times your risk you made. A stop that gets hit is exactly 1R, so a loss needs nothing typed."
+                >
+                  {(id) => (
+                    <RInput
+                      id={id}
+                      outcome={form.result === 'open' ? 'flat' : form.result}
+                      value={form.rValue}
+                      onChange={(v) => set('rValue', v)}
+                      riskAmount={perR}
+                      currency={currency}
+                    />
+                  )}
+                </Field>
+              )
             )}
           </div>
 
@@ -647,6 +727,21 @@ export function TradeEntrySheet() {
               </SegmentedShell>
             </SegmentedGroup>
           </div>
+
+          <Field
+            label="Strategy"
+            optional
+            tip="Which of your setups this was. Naming it is what lets the review tell you which setups actually make money."
+          >
+            {() => (
+              <StrategyPicker
+                strategies={strategies}
+                value={form.strategyId}
+                onChange={(id) => set('strategyId', id)}
+                plannedIds={plannedStrategyIds}
+              />
+            )}
+          </Field>
 
           {/* ---- detailed fields ---- */}
           {detailed && (
@@ -770,7 +865,7 @@ export function TradeEntrySheet() {
                     currency={accountCurrency}
                     maxRiskPct={maxRiskPct}
                     suggestedLots={suggestedLots}
-                    suggestedRisk={riskBudgetFrom(account.accountSize, maxRiskPct)}
+                    suggestedRisk={riskBudgetFrom(standing.riskBase ?? undefined, maxRiskPct)}
                     onUseSuggested={(lots) => set('lotSize', String(lots))}
                     rateFetchedAt={fx.fetchedAt}
                     rateStale={fx.stale}
@@ -813,27 +908,17 @@ export function TradeEntrySheet() {
                   )}
 
                   <div className="grid gap-3 sm:grid-cols-2">
-                    <Field label="Chart before" optional>
-                      {(id) => (
-                        <Input
-                          id={id}
-                          type="url"
-                          inputMode="url"
-                          placeholder="tradingview.com/x/…"
-                          value={form.beforeChartUrl}
-                          onChange={(e) => set('beforeChartUrl', e.target.value)}
-                        />
-                      )}
-                    </Field>
-                    <Field label="Chart after" optional>
-                      {(id) => (
-                        <Input
-                          id={id}
-                          type="url"
-                          inputMode="url"
-                          placeholder="tradingview.com/x/…"
-                          value={form.afterChartUrl}
-                          onChange={(e) => set('afterChartUrl', e.target.value)}
+                    <Field
+                      label="Charts"
+                      optional
+                      tip="Every screenshot from your analysis — the daily for context, the H4 for the level, the entry timeframe. Tag each with its timeframe and, if you like, the bias you read on it."
+                      className="sm:col-span-2"
+                    >
+                      {() => (
+                        <ChartLinks
+                          value={form.charts}
+                          onChange={(c) => set('charts', c)}
+                          known={knownTimeframes}
                         />
                       )}
                     </Field>
@@ -850,6 +935,22 @@ export function TradeEntrySheet() {
             "what went wrong" UI — that framing turns a journal into a
             confessional.
           */}
+          {!isOpen && (
+            <Field
+              label="What happened?"
+              optional
+              tip="Tick whatever applies. Because it's a fixed list, six trades marked 'moved my SL' can be added up — six sentences saying roughly that cannot."
+            >
+              {() => (
+                <ReasonChips
+                  outcome={form.result === 'open' ? 'flat' : form.result}
+                  value={form.reasonTags}
+                  onChange={(r) => set('reasonTags', r)}
+                />
+              )}
+            </Field>
+          )}
+
           <Field
             label="Why did you take this?"
             optional
@@ -870,23 +971,15 @@ export function TradeEntrySheet() {
           <Field
             label="Tags"
             optional
-            tip="Short labels like 'breakout' or 'london'. We then show which of your setups actually wins."
-            hint="Separate them with commas."
+            tip="Short labels like 'breakout' or 'london'. We show which of your tagged setups actually wins."
           >
             {(id) => (
-              <div className="relative">
-                <Tag
-                  className="pointer-events-none absolute left-3 top-1/2 size-3.5 -translate-y-1/2 text-ink-faint"
-                  aria-hidden
-                />
-                <Input
-                  id={id}
-                  className="pl-8"
-                  placeholder="breakout, london"
-                  value={form.tags}
-                  onChange={(e) => set('tags', e.target.value)}
-                />
-              </div>
+              <TagInput
+                id={id}
+                value={form.tags}
+                onChange={(tags) => set('tags', tags)}
+                suggestions={tagOptions}
+              />
             )}
           </Field>
 

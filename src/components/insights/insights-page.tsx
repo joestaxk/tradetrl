@@ -22,11 +22,16 @@ import {
 import { Money, Stat, StatRow } from '#/components/ui/numbers'
 import { Sparkline } from '#/components/charts/equity-curve'
 import { SessionHeatmap } from '#/components/charts/heatmap'
+import { RiskCard } from '#/components/insights/risk-card'
 import { toast } from '#/components/ui/toast'
 import { useJournals } from '#/lib/use-journals'
 import { useTrades } from '#/lib/use-trades'
 import { byPair, byTag, computeStats, maxDrawdown, medianHoldMinutes } from '#/lib/aggregate'
-import { allFlags, disciplineScore, journalingStreak, scoreTrend } from '#/lib/patterns'
+import { analyse, disciplineScore, journalingStreak, readiness, scoreTrend } from '#/lib/patterns'
+import { useStrategies } from '#/lib/use-strategies'
+import { useAuth } from '#/lib/auth'
+import { sessionWindowsOf } from '#/lib/sessions'
+import { accountStanding } from '#/lib/balance'
 import { downloadCsv } from '#/lib/export'
 import { formatMoney, formatPct, formatR } from '#/lib/calc'
 import { addDays, formatDuration, startOfWeek, today } from '#/lib/dates'
@@ -47,7 +52,21 @@ export function InsightsPage() {
   const stats = useMemo(() => computeStats(trades), [trades])
   const discipline = useMemo(() => disciplineScore(trades), [trades])
   const streak = useMemo(() => journalingStreak(trades, today()), [trades])
-  const flags = useMemo(() => allFlags(trades), [trades])
+  const { active: strategies } = useStrategies()
+  const { profile } = useAuth()
+  const sessionWindows = useMemo(() => sessionWindowsOf(profile?.prefs), [profile?.prefs])
+  const standing = useMemo(() => accountStanding(account, trades), [account, trades])
+  const insights = useMemo(
+    () =>
+      analyse(trades, {
+        strategies,
+        sessionWindows,
+        declaredRiskPct: account.riskRules.maxRiskPerTradePct,
+        riskBase: standing.riskBase,
+      }),
+    [trades, strategies, sessionWindows, account.riskRules.maxRiskPerTradePct, standing.riskBase],
+  )
+  const engineReadiness = useMemo(() => readiness(trades), [trades])
   const pairs = useMemo(() => byPair(trades).slice(0, 6), [trades])
   const tags = useMemo(() => byTag(trades).slice(0, 8), [trades])
   const drawdown = useMemo(() => maxDrawdown(trades), [trades])
@@ -134,6 +153,8 @@ export function InsightsPage() {
         />
       </StatRow>
 
+      <RiskCard trades={trades} />
+
       {/* ---- discipline trend ---- */}
       <Card>
         <CardHeader>
@@ -196,34 +217,60 @@ export function InsightsPage() {
           <div>
             <CardTitle>What the log noticed</CardTitle>
             <p className="mt-1 text-[13px] leading-relaxed text-ink-muted">
-              Detected from your trades — never self-reported, and measured against your
-              own averages rather than anyone else's.
+              Read from your own history and measured against your own averages.
+              Nothing appears here until there's enough data to mean something.
             </p>
           </div>
         </CardHeader>
         <CardBody>
-          {flags.length === 0 ? (
-            <p className="text-[13px] leading-relaxed text-ink-dim">
-              Nothing stood out. No oversized trades after losses, no days well above your
-              usual pace.
-            </p>
+          {insights.length === 0 ? (
+            <div className="flex flex-col gap-2">
+              <p className="text-[13px] leading-relaxed text-ink-dim">
+                {engineReadiness.missing.length > 0
+                  ? 'Not enough to say anything yet.'
+                  : 'Nothing stood out. No oversized trades after losses, no days well above your usual pace.'}
+              </p>
+              {/*
+                An empty Insights page must never read as "nothing is wrong" —
+                it usually means "not yet". Saying which is honest and stops
+                silence being mistaken for a clean bill of health.
+              */}
+              {engineReadiness.missing.length > 0 && (
+                <ul className="flex flex-col gap-1">
+                  {engineReadiness.missing.map((m) => (
+                    <li key={m} className="flex gap-2 text-[13px] text-ink-muted">
+                      <span className="mt-[7px] size-1 shrink-0 rounded-full bg-ink-faint" aria-hidden />
+                      {m}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
           ) : (
             <ul className="flex flex-col gap-2.5">
-              {flags.slice(0, 8).map((f, i) => (
+              {insights.slice(0, 10).map((f, i) => (
                 <li
-                  key={`${f.kind}-${f.date}-${i}`}
-                  className="stagger flex flex-col gap-1 rounded-xl border border-line bg-raised px-3.5 py-3"
+                  key={`${f.kind}-${i}`}
+                  className={cn(
+                    'stagger flex flex-col gap-1.5 rounded-xl border px-3.5 py-3',
+                    f.weight === 'critical'
+                      ? 'border-caution/25 bg-caution-wash'
+                      : 'border-line bg-raised',
+                  )}
                   style={{ '--i': i } as React.CSSProperties}
                 >
                   <span className="flex flex-wrap items-center gap-2">
                     <span className="text-[13px] font-medium text-ink">{f.title}</span>
-                    {f.date && (
-                      <Badge tone="neutral" className="tnum">
-                        {f.date}
-                      </Badge>
-                    )}
+                    <Badge tone={f.weight === 'critical' ? 'caution' : 'neutral'} className="tnum">
+                      {f.sample} trades
+                    </Badge>
                   </span>
-                  <span className="text-[13px] leading-relaxed text-ink-muted">{f.detail}</span>
+                  <span className="text-[13px] leading-relaxed text-ink-dim">{f.detail}</span>
+                  {/*
+                    The arithmetic, shown rather than asserted. A claim you
+                    can check is a claim worth acting on.
+                  */}
+                  <span className="text-[11px] leading-relaxed text-ink-faint">{f.evidence}</span>
                 </li>
               ))}
             </ul>

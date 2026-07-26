@@ -18,6 +18,10 @@ import { durationMinutes, formatDuration, longDayLabel } from '#/lib/dates'
 import { useAppStore } from '#/store/app'
 import { useJournals } from '#/lib/use-journals'
 import { useTrades } from '#/lib/use-trades'
+import { useAuth } from '#/lib/auth'
+import { formatTime, timeFormatOf } from '#/lib/clock'
+import { chartCaption, chartsOf, hasCharts, sortCharts } from '#/lib/charts'
+import { isCostly, reasonLabel } from '#/lib/reasons'
 import type { Trade } from '#/lib/types'
 import { cn } from '#/components/ui/cn'
 
@@ -32,7 +36,9 @@ export function DayDetail() {
   const openEditTrade = useAppStore((s) => s.openEditTrade)
   const { trades } = useTrades()
   const { active: account } = useJournals()
+  const { profile } = useAuth()
   const currency = account.currency
+  const clock = timeFormatOf(profile?.prefs)
 
   const dayTrades = useMemo(
     () => (selectedDay ? sortChronological(trades.filter((t) => t.date === selectedDay)) : []),
@@ -42,7 +48,12 @@ export function DayDetail() {
   const openCount = useMemo(() => dayTrades.filter((t) => t.status === 'open').length, [dayTrades])
   const curve = useMemo(() => equityCurve(dayTrades), [dayTrades])
 
-  const chartPair = dayTrades.find((t) => t.beforeChartUrl && t.afterChartUrl)
+  // The trade with the most marked-up charts is the one worth opening side by
+  // side — a top-down read is only useful seen together.
+  const chartRich = dayTrades
+    .map((t) => ({ t, charts: chartsOf(t) }))
+    .filter((x) => x.charts.length >= 2)
+    .sort((a, b) => b.charts.length - a.charts.length)[0]
 
   return (
     <Dialog open={selectedDay !== null} onOpenChange={(o) => !o && closeDay()}>
@@ -129,6 +140,7 @@ export function DayDetail() {
                 <TradeTable
                   trades={dayTrades}
                   currency={currency}
+                  clock={clock}
                   onEdit={(t) => {
                     closeDay()
                     openEditTrade(t)
@@ -141,18 +153,19 @@ export function DayDetail() {
 
         {(stats.trades > 0 || openCount > 0) && (
           <DialogFooter>
-            {chartPair && (
+            {chartRich && (
               <Button
                 variant="outline"
                 className="sm:mr-auto"
                 onClick={() => {
-                  // §10: both charts, one click, instead of two tabs.
-                  window.open(chartPair.beforeChartUrl, '_blank', 'noopener')
-                  window.open(chartPair.afterChartUrl, '_blank', 'noopener')
+                  // §10: the whole markup in one click instead of four tabs.
+                  for (const c of sortCharts(chartRich.charts)) {
+                    window.open(c.url, '_blank', 'noopener')
+                  }
                 }}
               >
                 <Columns2 aria-hidden />
-                Open before &amp; after
+                Open all {chartRich.charts.length} charts
               </Button>
             )}
             <Button
@@ -179,10 +192,12 @@ export function DayDetail() {
 function TradeTable({
   trades,
   currency,
+  clock,
   onEdit,
 }: {
   trades: Trade[]
   currency: string
+  clock: '12h' | '24h'
   onEdit: (t: Trade) => void
 }) {
   return (
@@ -212,7 +227,7 @@ function TradeTable({
             )}
           >
             <span className="hidden w-11 shrink-0 text-[12px] text-ink-muted tnum sm:block">
-              {t.time ?? '—'}
+              {t.time ? formatTime(t.time, clock) : '—'}
             </span>
 
             <span className="flex min-w-0 items-center gap-2">
@@ -237,7 +252,7 @@ function TradeTable({
               </Badge>
               {t.time && (
                 <span className="shrink-0 text-[11px] text-ink-faint tnum sm:hidden">
-                  {t.time}
+                  {formatTime(t.time, clock)}
                 </span>
               )}
             </span>
@@ -257,7 +272,11 @@ function TradeTable({
             </span>
           </button>
 
-          {(t.reason || (t.ruleViolations?.length ?? 0) > 0 || t.beforeChartUrl || t.afterChartUrl || (t.tags?.length ?? 0) > 0) && (
+          {(t.reason ||
+            (t.ruleViolations?.length ?? 0) > 0 ||
+            hasCharts(t) ||
+            (t.reasonTags?.length ?? 0) > 0 ||
+            (t.tags?.length ?? 0) > 0) && (
             <div className="flex flex-col gap-2 border-t border-line px-3 py-2.5">
               {t.reason && (
                 <p className="flex gap-2 text-[13px] leading-relaxed text-ink-dim">
@@ -266,16 +285,25 @@ function TradeTable({
                 </p>
               )}
 
+              {(t.reasonTags?.length ?? 0) > 0 && (
+                <div className="flex flex-wrap gap-1.5">
+                  {t.reasonTags!.map((r) => (
+                    <Badge key={r} tone={isCostly(r) ? 'caution' : 'win'}>
+                      {reasonLabel(r)}
+                    </Badge>
+                  ))}
+                </div>
+              )}
+
               <div className="flex flex-wrap items-center gap-1.5">
                 {t.tags?.map((tag) => (
                   <Badge key={tag} tone="neutral">
                     {tag}
                   </Badge>
                 ))}
-                {t.beforeChartUrl && (
-                  <ChartLink href={t.beforeChartUrl} label="Before" />
-                )}
-                {t.afterChartUrl && <ChartLink href={t.afterChartUrl} label="After" />}
+                {sortCharts(chartsOf(t)).map((c, ci) => (
+                  <ChartLink key={ci} href={c.url} label={chartCaption(c)} bias={c.bias} />
+                ))}
               </div>
 
               {/*
@@ -295,7 +323,15 @@ function TradeTable({
   )
 }
 
-function ChartLink({ href, label }: { href: string; label: string }) {
+function ChartLink({
+  href,
+  label,
+  bias,
+}: {
+  href: string
+  label: string
+  bias?: 'bullish' | 'bearish' | 'neutral'
+}) {
   return (
     <a
       href={href}
@@ -307,7 +343,18 @@ function ChartLink({ href, label }: { href: string; label: string }) {
         'hover:border-accent-edge hover:text-accent-bright',
       )}
     >
-      {label} chart
+      {label}
+      {bias && (
+        <span
+          className={cn(
+            'size-1.5 rounded-full',
+            bias === 'bullish' && 'bg-win',
+            bias === 'bearish' && 'bg-loss',
+            bias === 'neutral' && 'bg-flat',
+          )}
+          aria-hidden
+        />
+      )}
       <ArrowUpRight className="size-3" aria-hidden />
     </a>
   )

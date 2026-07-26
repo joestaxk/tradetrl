@@ -1,12 +1,26 @@
 import { useState } from 'react'
-import { ArrowRight, Gauge, Mail, ShieldCheck, Zap } from 'lucide-react'
+import { ArrowRight, Gauge, Mail, ShieldCheck, Wallet, Zap } from 'lucide-react'
 import { Button } from '#/components/ui/button'
 import { Field, Input, NumberInput } from '#/components/ui/field'
 import { RadioCard, RadioGroup, Switch } from '#/components/ui/toggles'
 import { Mark } from '#/components/app/mark'
 import { toast } from '#/components/ui/toast'
 import { useAuth } from '#/lib/auth'
-import { completeOnboarding } from '#/lib/repo'
+import {
+  DEFAULT_JOURNAL_ID,
+  completeOnboarding,
+  ensureDefaultJournal,
+  updateJournal,
+} from '#/lib/repo'
+import { today } from '#/lib/dates'
+import { CURRENCIES } from '#/lib/currencies'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '#/components/ui/select'
 import { flags } from '#/lib/env'
 import type { EntryDetailLevel } from '#/lib/types'
 import { cn } from '#/components/ui/cn'
@@ -25,10 +39,19 @@ export function Onboarding() {
     profile?.prefs.entryDetailLevel ?? 'minimal',
   )
   const [showOptional, setShowOptional] = useState(false)
+  // The one thing that genuinely cannot be optional. "Risk 1%" is not a number
+  // until we know 1% of what, and every risk figure in the app depends on it.
+  const [accountName, setAccountName] = useState('My account')
+  const [balance, setBalance] = useState('')
+  const [currency, setCurrency] = useState('USD')
+  const [riskBasis, setRiskBasis] = useState<'starting' | 'current'>('starting')
   const [maxRisk, setMaxRisk] = useState('')
   const [pairs, setPairs] = useState('')
   const [emailOptIn, setEmailOptIn] = useState(false)
   const [busy, setBusy] = useState(false)
+
+  const parsedBalanceLive = Number.parseFloat(balance)
+  const balanceValid = Number.isFinite(parsedBalanceLive) && parsedBalanceLive > 0
 
   const finish = async () => {
     if (!user) return
@@ -40,15 +63,32 @@ export function Onboarding() {
         .map((p) => p.trim().toUpperCase())
         .filter(Boolean)
 
+      const parsedBalance = Number.parseFloat(balance)
+      const rules = {
+        ...(Number.isFinite(parsedRisk) && parsedRisk > 0
+          ? { maxRiskPerTradePct: parsedRisk }
+          : {}),
+        ...(allowed.length > 0 ? { allowedPairs: allowed } : {}),
+      }
+
+      // The account is created first: if this fails, onboarding stays
+      // incomplete and they land back here rather than in a journal with
+      // nowhere to log to.
+      await ensureDefaultJournal(user.uid)
+      await updateJournal(user.uid, DEFAULT_JOURNAL_ID, {
+        name: accountName.trim() || 'My account',
+        startingBalance: parsedBalance,
+        startedOn: today(),
+        riskBasis,
+        currency,
+        riskRules: rules,
+      })
+
       await completeOnboarding(user.uid, {
         entryDetailLevel: level,
         emailCheckInOptIn: emailOptIn,
-        riskRules: {
-          ...(Number.isFinite(parsedRisk) && parsedRisk > 0
-            ? { maxRiskPerTradePct: parsedRisk }
-            : {}),
-          ...(allowed.length > 0 ? { allowedPairs: allowed } : {}),
-        },
+        currency,
+        riskRules: rules,
       })
       await refreshProfile()
     } catch {
@@ -96,6 +136,108 @@ export function Onboarding() {
             />
           </div>
         </RadioGroup>
+
+        {/* ---- the account: required, because risk needs a denominator ---- */}
+        <div
+          className="stagger mt-7 flex flex-col gap-4 rounded-xl border border-line bg-panel p-4 sm:p-5"
+          style={{ '--i': 3 } as React.CSSProperties}
+        >
+          <div className="flex items-start gap-2.5">
+            <Wallet className="mt-0.5 size-4 shrink-0 text-ink-muted" aria-hidden />
+            <p className="text-[13px] leading-relaxed text-ink-muted">
+              Your first account. We track its balance from here, so you can see what
+              your trading has actually done to the money.
+            </p>
+          </div>
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field label="Account name">
+              {(id) => (
+                <Input
+                  id={id}
+                  value={accountName}
+                  onChange={(e) => setAccountName(e.target.value)}
+                  placeholder="FTMO 50k"
+                />
+              )}
+            </Field>
+            <Field label="Currency">
+              {() => (
+                <Select value={currency} onValueChange={setCurrency}>
+                  <SelectTrigger aria-label="Currency">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {CURRENCIES.map((c) => (
+                      <SelectItem key={c} value={c}>
+                        {c}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+            </Field>
+          </div>
+
+          <Field
+            label="Starting balance"
+            hint="What the account holds today. Everything you log counts from here."
+          >
+            {(id) => (
+              <NumberInput
+                id={id}
+                value={balance}
+                onChange={(e) => setBalance(e.target.value)}
+                placeholder="50000"
+              />
+            )}
+          </Field>
+
+          <Field
+            label="Max risk per trade"
+            optional
+            hint="Leave blank if you don't work to a fixed number."
+          >
+            {(id) => (
+              <NumberInput
+                id={id}
+                affix="%"
+                placeholder="1"
+                value={maxRisk}
+                onChange={(e) => setMaxRisk(e.target.value)}
+              />
+            )}
+          </Field>
+
+          <div className="flex flex-col gap-2">
+            <span className="text-[13px] font-medium text-ink-dim">
+              That percentage is of…
+            </span>
+            <div className="flex gap-1.5">
+              {(
+                [
+                  ['starting', 'My deposit', 'Fixed, like a prop firm'],
+                  ['current', 'My balance', 'Grows and shrinks with the account'],
+                ] as const
+              ).map(([v, label, note]) => (
+                <button
+                  key={v}
+                  type="button"
+                  onClick={() => setRiskBasis(v)}
+                  className={cn(
+                    'flex flex-1 flex-col gap-0.5 rounded-lg border px-3 py-2 text-left transition-colors',
+                    riskBasis === v
+                      ? 'border-accent bg-accent-wash'
+                      : 'border-line bg-raised hover:border-line-strong',
+                  )}
+                >
+                  <span className="text-[13px] font-medium text-ink">{label}</span>
+                  <span className="text-[11px] leading-snug text-ink-muted">{note}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
 
         {/* Optional extras — collapsed by default, one tap to open, always skippable. */}
         <div className="stagger mt-6" style={{ '--i': 3 } as React.CSSProperties}>
@@ -182,12 +324,19 @@ export function Onboarding() {
         </div>
 
         <div className="stagger mt-7 flex flex-col gap-3" style={{ '--i': 4 } as React.CSSProperties}>
-          <Button size="lg" variant="primary" onClick={finish} disabled={busy}>
+          <Button
+            size="lg"
+            variant="primary"
+            onClick={finish}
+            disabled={busy || !balanceValid}
+          >
             {busy ? 'Setting up…' : 'Open my journal'}
             {!busy && <ArrowRight aria-hidden />}
           </Button>
           <p className="text-center text-xs text-ink-faint">
-            No card, no trial, nothing to cancel.
+            {balanceValid
+              ? 'No card, no trial, nothing to cancel.'
+              : 'Add a starting balance to continue.'}
           </p>
         </div>
       </div>

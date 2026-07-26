@@ -225,7 +225,7 @@ function DayCell({
           >
             {/* Two formats, not one truncated one — see formatMoneyMicro. */}
             <span className="text-[10px] sm:hidden">
-              {formatMoneyMicro(summary!.stats.pnl)}
+              {formatMoneyMicro(summary!.stats.pnl, currency)}
             </span>
             <span className="hidden truncate text-[13px] sm:inline">
               {formatMoney(summary!.stats.pnl, { currency, compact: true })}
@@ -243,9 +243,23 @@ function DayCell({
         )
       )}
 
+      {/*
+        The trade count lives in the corner opposite the day number, using
+        space that was empty anyway. At 320px there is no room for it under
+        the figure, and dropping it entirely loses real information.
+      */}
+      {hasTrades && (
+        <span
+          className="absolute right-1 top-1 text-[9px] font-medium leading-none text-ink-faint tnum sm:hidden"
+          aria-hidden
+        >
+          {summary!.stats.trades}
+        </span>
+      )}
+
       {(summary?.violations ?? 0) > 0 && (
         <span
-          className="absolute right-1 top-1 size-1.5 rounded-full bg-caution"
+          className="absolute right-1 top-1 size-1.5 rounded-full bg-caution max-sm:right-auto max-sm:left-1 max-sm:top-1.5"
           aria-hidden
           title="A rule was noted this day"
         />
