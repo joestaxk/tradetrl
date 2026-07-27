@@ -8,11 +8,15 @@ import {
   useState,
 } from 'react'
 import {
+  createUserWithEmailAndPassword,
   getRedirectResult,
   onAuthStateChanged,
+  sendPasswordResetEmail,
+  signInWithEmailAndPassword,
   signInWithPopup,
   signInWithRedirect,
   signOut,
+  updateProfile,
   type User,
 } from 'firebase/auth'
 import { authReady, getFirebaseAuth, googleProvider } from './firebase'
@@ -33,6 +37,9 @@ interface AuthValue {
   user: User | null
   profile: UserDoc | null
   signInWithGoogle: () => Promise<void>
+  signInWithEmail: (email: string, password: string) => Promise<void>
+  createAccount: (email: string, password: string, name?: string) => Promise<void>
+  resetPassword: (email: string) => Promise<void>
   signOutNow: (reason?: 'expired') => Promise<void>
   updatePrefs: (prefs: Partial<UserPrefs>) => Promise<void>
   refreshProfile: () => Promise<void>
@@ -105,6 +112,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (!isFirebaseConfigured) return
     const auth = getFirebaseAuth()
     if (!auth) return
+
+    /*
+      Started here, deliberately early. `signInWithPopup` must not await
+      anything, so persistence has to be in flight well before the user
+      clicks — by which point it has settled.
+    */
+    void authReady()
 
     // Loud, because it is invisible otherwise: Firebase throws nothing, the
     // user is simply sent to a URL that does not exist.
@@ -188,9 +202,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (!auth) throw new Error('Firebase is not configured')
     expiredRef.current = false
 
-    // Without this the credential can be written to in-memory persistence and
-    // lost on the redirect's page reload.
-    await authReady()
+    /*
+      NOTHING may be awaited before `signInWithPopup` below.
+
+      Safari — and Firefox, less strictly — only allows a popup that is opened
+      synchronously within the call stack of the user's click. Any `await`
+      first yields to the event loop, the gesture is considered spent, and the
+      popup is blocked. Persistence used to be awaited right here, which is
+      precisely why Safari users could not sign in while other browsers could.
+
+      Persistence is instead started at boot (see the effect above) and has
+      long since settled by the time anyone reaches this button.
+    */
 
     /*
       Popup or redirect, chosen by where we're running.
@@ -207,12 +230,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       entirely and comes back with the credential in the URL.
     */
     if (prefersRedirectSignIn()) {
+      // Safe to await: a redirect opens no popup, so no gesture to preserve.
+      await authReady()
       await signInWithRedirect(auth, googleProvider())
       return
     }
 
     try {
-      await signInWithPopup(auth, googleProvider())
+      // Called synchronously — see the note above.
+      const popup = signInWithPopup(auth, googleProvider())
+      await popup
     } catch (e) {
       const code = (e as { code?: string })?.code ?? ''
       // The browser refusing or losing the popup is recoverable — redirect
@@ -227,6 +254,46 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
       throw e
     }
+  }, [])
+
+  /*
+    Email and password. Deliberately plain.
+
+    No popup, no redirect, no cross-origin iframe and no third-party storage —
+    which is the entire reason it exists here. Every environment that has given
+    Google sign-in trouble (Safari's ITP, installed PWAs, in-app browsers)
+    handles this identically to a desktop browser, because it is a single form
+    POST to Firebase and nothing more.
+  */
+  const signInWithEmail = useCallback(async (email: string, password: string) => {
+    const auth = getFirebaseAuth()
+    if (!auth) throw new Error('Firebase is not configured')
+    expiredRef.current = false
+    await authReady()
+    await signInWithEmailAndPassword(auth, email.trim(), password)
+  }, [])
+
+  const createAccount = useCallback(
+    async (email: string, password: string, name?: string) => {
+      const auth = getFirebaseAuth()
+      if (!auth) throw new Error('Firebase is not configured')
+      expiredRef.current = false
+      await authReady()
+      const cred = await createUserWithEmailAndPassword(auth, email.trim(), password)
+      // Set before the auth listener writes the user document, so the journal
+      // greets them by name rather than by email address.
+      if (name?.trim()) {
+        await updateProfile(cred.user, { displayName: name.trim() })
+      }
+    },
+    [],
+  )
+
+  /** Firebase sends this itself — no Resend, no domain, nothing to configure. */
+  const resetPassword = useCallback(async (email: string) => {
+    const auth = getFirebaseAuth()
+    if (!auth) throw new Error('Firebase is not configured')
+    await sendPasswordResetEmail(auth, email.trim())
   }, [])
 
   const signOutNow = useCallback(async (reason?: 'expired') => {
@@ -258,12 +325,26 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       user,
       profile,
       signInWithGoogle,
+      signInWithEmail,
+      createAccount,
+      resetPassword,
       signOutNow,
       updatePrefs,
       refreshProfile,
       onboarded: Boolean(profile?.onboardedAt),
     }),
-    [status, user, profile, signInWithGoogle, signOutNow, updatePrefs, refreshProfile],
+    [
+      status,
+      user,
+      profile,
+      signInWithGoogle,
+      signInWithEmail,
+      createAccount,
+      resetPassword,
+      signOutNow,
+      updatePrefs,
+      refreshProfile,
+    ],
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

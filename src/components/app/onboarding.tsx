@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { ArrowRight, Gauge, Mail, ShieldCheck, Wallet, Zap } from 'lucide-react'
+import { ArrowRight, LogOut, Gauge, Mail, ShieldCheck, Wallet, Zap } from 'lucide-react'
 import { Button } from '#/components/ui/button'
 import { Field, Input, NumberInput } from '#/components/ui/field'
 import { RadioCard, RadioGroup, Switch } from '#/components/ui/toggles'
@@ -34,7 +34,7 @@ import { cn } from '#/components/ui/cn'
  * *required* steps would be the same mistake wearing a different hat.
  */
 export function Onboarding() {
-  const { user, profile, refreshProfile } = useAuth()
+  const { user, profile, refreshProfile, signOutNow } = useAuth()
   const [level, setLevel] = useState<EntryDetailLevel>(
     profile?.prefs.entryDetailLevel ?? 'minimal',
   )
@@ -102,7 +102,30 @@ export function Onboarding() {
     <main className="mesh grain min-h-dvh px-5 py-10 sm:py-16">
       <div className="mx-auto w-full max-w-lg">
         <div className="stagger" style={{ '--i': 0 } as React.CSSProperties}>
-          <Mark className="size-9" />
+          {/*
+            Onboarding was a one-way door: signed in, not yet onboarded, and no
+            way back to the sign-in screen. Anyone who arrived as the wrong
+            account — a shared device, the wrong Google profile picked in the
+            chooser — was stuck creating a journal they did not want.
+          */}
+          <div className="flex items-start justify-between gap-3">
+            <Mark className="size-9" />
+            <div className="flex min-w-0 flex-col items-end gap-1">
+              {profile?.email && (
+                <span className="max-w-[14rem] truncate text-[12px] text-ink-faint">
+                  {profile.email}
+                </span>
+              )}
+              <button
+                type="button"
+                onClick={() => void signOutNow()}
+                className="inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-line px-2.5 text-[12px] text-ink-muted transition-colors hover:border-line-strong hover:text-ink"
+              >
+                <LogOut className="size-3.5" aria-hidden />
+                Not you?
+              </button>
+            </div>
+          </div>
           <h1 className="mt-6 font-display text-[28px] leading-tight text-ink sm:text-4xl">
             How much do you want to log?
           </h1>

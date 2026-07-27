@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { AlertTriangle, ArrowRight } from 'lucide-react'
 import { Button } from '#/components/ui/button'
 import { Mark } from '#/components/app/mark'
+import { EmailForm } from '#/components/app/email-form'
 import { AuthDebug } from '#/components/app/auth-debug'
 import { useAuth } from '#/lib/auth'
 import { toast } from '#/components/ui/toast'
@@ -109,7 +110,7 @@ export function SignIn({ expired = false }: { expired?: boolean }) {
             Welcome back
           </h1>
           <p className="mt-2 text-sm leading-relaxed text-ink-muted">
-            One tap in. Your journal is exactly where you left it.
+            Your journal is exactly where you left it.
           </p>
         </div>
 
@@ -127,19 +128,28 @@ export function SignIn({ expired = false }: { expired?: boolean }) {
         )}
 
         <div className="stagger mt-8" style={{ '--i': 2 } as React.CSSProperties}>
+          {/*
+            Email first, Google second. Google's popup and redirect flows are
+            the ones that break in Safari, installed apps and in-app browsers,
+            so the reliable path should not be the one people have to look for.
+          */}
+          <EmailForm />
+
+          <div className="my-5 flex items-center gap-3">
+            <span className="h-px flex-1 bg-line" />
+            <span className="text-[11px] uppercase tracking-wider text-ink-faint">or</span>
+            <span className="h-px flex-1 bg-line" />
+          </div>
+
           <Button size="lg" variant="secondary" className="w-full" onClick={go} disabled={busy}>
             <GoogleGlyph />
             {busy ? 'Opening Google…' : 'Continue with Google'}
           </Button>
-          {problem ? (
+          {problem && (
             <div className="mt-4 flex gap-2.5 rounded-xl border border-loss-edge bg-loss-wash px-3.5 py-3">
               <AlertTriangle className="mt-0.5 size-4 shrink-0 text-loss" aria-hidden />
               <p className="text-[13px] leading-relaxed text-ink-dim">{problem}</p>
             </div>
-          ) : (
-            <p className="mt-4 text-center text-xs leading-relaxed text-ink-faint">
-              Google is the only way in — no password to forget, nothing to reset.
-            </p>
           )}
         </div>
 
