@@ -75,7 +75,16 @@ function isPlainObject(v: unknown): v is Record<string, unknown> {
   return proto === Object.prototype || proto === null
 }
 
-/** Strip undefined recursively — Firestore rejects it outright. */
+/**
+ * Strip undefined recursively — Firestore rejects it outright.
+ *
+ * Arrays are cleaned element by element, which is not optional. Firestore
+ * rejects `undefined` *inside* an array exactly as it does at the top level,
+ * and it fails the whole write rather than the offending field. A chart row
+ * carrying `{ url, timeframe: undefined }` therefore stopped an entire trade
+ * from saving — the chart went missing and so did the trade, with the calendar
+ * simply never showing it.
+ */
 export function clean<T extends Record<string, unknown>>(obj: T): T {
   const out: Record<string, unknown> = {}
   for (const [k, v] of Object.entries(obj)) {
@@ -85,10 +94,28 @@ export function clean<T extends Record<string, unknown>>(obj: T): T {
       if (Object.keys(nested).length > 0) out[k] = nested
       continue
     }
-    // Arrays, Dates, Timestamps and FieldValue sentinels pass through whole.
+    if (Array.isArray(v)) {
+      out[k] = cleanArray(v)
+      continue
+    }
+    // Dates, Timestamps and FieldValue sentinels pass through whole.
     out[k] = v
   }
   return out as T
+}
+
+/**
+ * Cleans array members. `undefined` entries are dropped rather than preserved
+ * as holes, because Firestore cannot store a hole either.
+ */
+function cleanArray(arr: unknown[]): unknown[] {
+  return arr
+    .filter((v) => v !== undefined)
+    .map((v) => {
+      if (isPlainObject(v)) return clean(v)
+      if (Array.isArray(v)) return cleanArray(v)
+      return v
+    })
 }
 
 function toMillis(v: unknown): number {
