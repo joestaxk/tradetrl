@@ -14,3 +14,4 @@ todos.json
 .env.local
 .vercel
 coverage
+vercel-env.txt

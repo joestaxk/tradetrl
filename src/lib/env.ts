@@ -43,4 +43,23 @@ export const telegramHandle = (raw.VITE_TELEGRAM_HANDLE as string | undefined)?.
 
 export const telegramUrl = telegramHandle ? `https://t.me/${telegramHandle}` : null
 
+/**
+ * Catches the misconfiguration that silently breaks Google sign-in.
+ *
+ * `authDomain` must point at a host that actually serves Firebase's
+ * `/__/auth/handler`. That is `<project>.firebaseapp.com` unless you are
+ * proxying the handler through your own domain — and we are not. Pointing it
+ * at the app's own host without that proxy sends users to a URL that 404s,
+ * mid-sign-in, with no error from Firebase itself.
+ */
+export function checkAuthDomain(): string | null {
+  if (typeof window === 'undefined') return null
+  const configured = firebaseConfig.authDomain
+  if (!configured) return 'VITE_FIREBASE_AUTH_DOMAIN is not set.'
+  if (configured === window.location.hostname) {
+    return `VITE_FIREBASE_AUTH_DOMAIN is set to ${configured}, this app's own host. Nothing serves /__/auth/handler there, so sign-in will fail. Set it to <project>.firebaseapp.com.`
+  }
+  return null
+}
+
 export const SESSION_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000

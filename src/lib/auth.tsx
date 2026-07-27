@@ -16,7 +16,7 @@ import {
   type User,
 } from 'firebase/auth'
 import { authReady, getFirebaseAuth, googleProvider } from './firebase'
-import { isFirebaseConfigured } from './env'
+import { checkAuthDomain, isFirebaseConfigured } from './env'
 import { isSessionExpired } from './session'
 import { loadUser, savePrefs, upsertUser } from './repo'
 import type { UserDoc, UserPrefs } from './types'
@@ -105,6 +105,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (!isFirebaseConfigured) return
     const auth = getFirebaseAuth()
     if (!auth) return
+
+    // Loud, because it is invisible otherwise: Firebase throws nothing, the
+    // user is simply sent to a URL that does not exist.
+    const misconfigured = checkAuthDomain()
+    if (misconfigured) console.error('[auth] %s', misconfigured)
 
     // If Firebase never answers — offline, blocked, or a hung request — fall
     // back to the sign-in screen rather than shimmering a skeleton forever.

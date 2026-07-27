@@ -379,7 +379,7 @@ function tradesCol(uid: string) {
   return collection(db(), 'users', uid, 'trades')
 }
 
-function toTrade(id: string, data: Record<string, unknown>): Trade {
+export function toTrade(id: string, data: Record<string, unknown>): Trade {
   const pnl = typeof data.pnl === 'number' ? data.pnl : 0
   return {
     id,
@@ -408,6 +408,19 @@ function toTrade(id: string, data: Record<string, unknown>): Trade {
     calcMode: (data.calcMode as Trade['calcMode']) ?? undefined,
     beforeChartUrl: data.beforeChartUrl as string | undefined,
     afterChartUrl: data.afterChartUrl as string | undefined,
+    /*
+      Everything below was written correctly and then dropped on the way back
+      out, which is the worst shape a bug can take: the save succeeds, the
+      toast says so, and the data is simply gone on reload. A field missing
+      here is invisible until a user tells you their chart vanished.
+      `tradeRoundTrip` in the tests now fails if this list falls behind the
+      Trade type again.
+    */
+    charts: data.charts as Trade['charts'],
+    strategyId: data.strategyId as string | undefined,
+    offPlan: data.offPlan as boolean | undefined,
+    bias: data.bias as Trade['bias'],
+    reasonTags: data.reasonTags as Trade['reasonTags'],
     reason: data.reason as string | undefined,
     tags: data.tags as string[] | undefined,
     ruleViolations: (data.ruleViolations as Trade['ruleViolations']) ?? [],

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { clean } from './repo'
+import { clean, toTrade } from './repo'
 
 describe('clean — the Firestore boundary', () => {
   it('drops undefined, which Firestore rejects outright', () => {
@@ -139,5 +139,94 @@ describe('clean — undefined inside arrays', () => {
     class FieldValue {}
     const sentinel = new FieldValue()
     expect((clean({ xs: [sentinel] }).xs as unknown[])[0]).toBe(sentinel)
+  })
+})
+
+describe('toTrade — every field must survive the round trip', () => {
+  /*
+    The bug this guards against was silent and expensive: `charts`,
+    `strategyId`, `offPlan`, `bias` and `reasonTags` were all written to
+    Firestore correctly and then never read back. The save succeeded, the
+    toast confirmed it, and the data was gone on reload — so chart links,
+    strategies, bias and reason tags all appeared not to work at all.
+
+    Adding a field to the Trade type without adding it here is the easiest
+    mistake to make in this file, so it now fails the build instead.
+  */
+  const stored = {
+    journalId: 'acct-1',
+    date: '2026-07-14',
+    time: '08:30',
+    closeDate: '2026-07-14',
+    closeTime: '11:00',
+    closedAt: 1_700_000_000_000,
+    pair: 'EURUSD',
+    direction: 'buy',
+    status: 'closed',
+    outcome: 'win',
+    pnl: 240,
+    lotSize: 0.2,
+    riskAmount: 120,
+    riskPct: 1.2,
+    entryPrice: 1.085,
+    exitPrice: 1.087,
+    stopPrice: 1.084,
+    targetPrice: 1.09,
+    rMultiple: 2,
+    pipValueUsed: 10,
+    calcMode: 'curated',
+    charts: [{ id: 'c1', url: 'https://tradingview.com/x/abc', timeframe: 'D', bias: 'long' }],
+    strategyId: 'strat-1',
+    offPlan: true,
+    bias: 'long',
+    reasonTags: ['chased-it'],
+    tags: ['breakout'],
+    reason: 'London sweep',
+    ruleViolations: [{ code: 'risk-exceeded', message: 'x' }],
+    createdAt: 1_700_000_000_000,
+    updatedAt: 1_700_000_000_001,
+  }
+
+  it('reads back every field that was stored', () => {
+    const t = toTrade('trade-1', stored) as unknown as Record<string, unknown>
+
+    const lost = Object.keys(stored).filter((k) => {
+      const v = t[k]
+      return v === undefined || (Array.isArray(v) && v.length === 0)
+    })
+
+    expect(lost).toEqual([])
+  })
+
+  it('reads back the chart list in full', () => {
+    const t = toTrade('trade-1', stored)
+    expect(t.charts).toHaveLength(1)
+    expect(t.charts?.[0]).toMatchObject({
+      url: 'https://tradingview.com/x/abc',
+      timeframe: 'D',
+    })
+  })
+
+  it('reads back the strategy, bias and reason tags', () => {
+    const t = toTrade('trade-1', stored)
+    expect(t.strategyId).toBe('strat-1')
+    expect(t.offPlan).toBe(true)
+    expect(t.bias).toBe('long')
+    expect(t.reasonTags).toEqual(['chased-it'])
+  })
+
+  it('still copes with a minimal document', () => {
+    // A `minimal` trader stores almost nothing; absent must stay absent
+    // rather than becoming a fabricated default.
+    const t = toTrade('trade-2', {
+      journalId: 'acct-1',
+      date: '2026-07-14',
+      pair: 'EURUSD',
+      direction: 'buy',
+      pnl: 100,
+    })
+    expect(t.charts).toBeUndefined()
+    expect(t.strategyId).toBeUndefined()
+    expect(t.pnl).toBe(100)
   })
 })

@@ -47,8 +47,10 @@ export function AuthDebug() {
       ['page host', host],
       ['authDomain', authDomain],
       [
-        'same origin?',
-        authDomain === host ? 'yes' : 'NO — cross-origin, storage may be blocked',
+        'authDomain valid?',
+        authDomain === host
+          ? 'NO — points at this host, /__/auth/handler will 404'
+          : 'yes',
       ],
       ['installed app', standalone ? 'yes' : 'no'],
       ['cookies enabled', String(navigator.cookieEnabled)],
