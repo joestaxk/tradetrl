@@ -108,24 +108,38 @@ export function Onboarding() {
             account — a shared device, the wrong Google profile picked in the
             chooser — was stuck creating a journal they did not want.
           */}
-          <div className="flex items-start justify-between gap-3">
+          <div className="flex items-center justify-between gap-3">
             <Mark className="size-9" />
-            <div className="flex min-w-0 flex-col items-end gap-1">
+
+            {/*
+              One row, centred on the logo. The button is 36px — the same as
+              `size-9` — so the two sit on a shared centre line instead of the
+              logo floating above a taller stacked block.
+            */}
+            <div className="flex min-w-0 items-center gap-2">
               {profile?.email && (
-                <span className="max-w-[14rem] truncate text-[12px] text-ink-faint">
+                <span className="hidden max-w-[13rem] truncate text-[12px] text-ink-faint sm:block">
                   {profile.email}
                 </span>
               )}
               <button
                 type="button"
                 onClick={() => void signOutNow()}
-                className="inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-line px-2.5 text-[12px] text-ink-muted transition-colors hover:border-line-strong hover:text-ink"
+                style={{ height: 36, flex: '0 0 auto' }}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-line px-3 text-[12px] text-ink-muted transition-colors hover:border-line-strong hover:text-ink"
               >
-                <LogOut className="size-3.5" aria-hidden />
+                <LogOut className="size-3.5 shrink-0" aria-hidden />
                 Not you?
               </button>
             </div>
           </div>
+
+          {/* The address moves below the row on mobile, where it will not fit. */}
+          {profile?.email && (
+            <p className="mt-2 truncate text-[12px] text-ink-faint sm:hidden">
+              Signed in as {profile.email}
+            </p>
+          )}
           <h1 className="mt-6 font-display text-[28px] leading-tight text-ink sm:text-4xl">
             How much do you want to log?
           </h1>
