@@ -18,7 +18,7 @@ import {
   DialogTitle,
 } from '#/components/ui/dialog'
 import { Button } from '#/components/ui/button'
-import { Field, Input, NumberInput, Textarea } from '#/components/ui/field'
+import { Field, Input, NumberInput } from '#/components/ui/field'
 import { SegmentedGroup, SegmentedItem, SegmentedShell } from '#/components/ui/toggles'
 import { Badge, Divider } from '#/components/ui/primitives'
 import { toast } from '#/components/ui/toast'
@@ -40,12 +40,11 @@ import { accountStanding, riskAllowance } from '#/lib/balance'
 import { computeFromR } from '#/lib/rr'
 import { RInput } from '#/components/trades/r-input'
 import { ChartLinks } from '#/components/trades/chart-links'
-import { ReasonChips } from '#/components/trades/reason-chips'
 import { chartsOf, normalizeChartUrl, timeframeVocabulary } from '#/lib/charts'
 import { sessionWindowsOf } from '#/lib/sessions'
 import { StrategyPicker } from '#/components/trades/strategy-picker'
 import { TagInput, tagVocabulary } from '#/components/trades/tag-input'
-import type { ChartRef, Direction, Outcome, TradeDraft } from '#/lib/types'
+import type { ChartRef, Direction, Outcome, Trade, TradeDraft } from '#/lib/types'
 import { cn } from '#/components/ui/cn'
 
 /** Parse a user-typed number, tolerating blanks, commas and stray spaces. */
@@ -130,6 +129,7 @@ export function TradeEntrySheet() {
   const entryTarget = useAppStore((s) => s.entryTarget)
   const entryDate = useAppStore((s) => s.entryDate)
   const closeEntry = useAppStore((s) => s.closeEntry)
+  const openReflection = useAppStore((s) => s.openReflection)
 
   const open = entryTarget !== null
   const editing = entryTarget !== null && entryTarget !== 'new' ? entryTarget : null
@@ -427,7 +427,7 @@ export function TradeEntrySheet() {
         tags: form.tags,
       }
 
-      await saveTrade(
+      const savedId = await saveTrade(
         user.uid,
         account.id,
         draft,
@@ -448,6 +448,20 @@ export function TradeEntrySheet() {
         resolving ? 'Resolved' : editing ? 'Trade updated' : isOpen ? 'Logged as open' : 'Logged',
       )
       closeEntry()
+
+      /*
+        The reflection step, asked only once the trade is safely stored and
+        only for a finished one — there is nothing to reflect on while it is
+        still running. Editing skips it too, since the note is already there.
+      */
+      if (!editing && !isOpen && signedAmount !== undefined) {
+        openReflection({
+          ...(draft as unknown as Trade),
+          id: savedId,
+          journalId: account.id,
+          createdAt: Date.now(),
+        })
+      }
     } catch (e) {
       console.error('[trade] save failed:', e)
       const code = (e as { code?: string })?.code
@@ -935,39 +949,6 @@ export function TradeEntrySheet() {
             "what went wrong" UI — that framing turns a journal into a
             confessional.
           */}
-          {!isOpen && (
-            <Field
-              label="What happened?"
-              optional
-              tip="Tick whatever applies. Because it's a fixed list, six trades marked 'moved my SL' can be added up — six sentences saying roughly that cannot."
-            >
-              {() => (
-                <ReasonChips
-                  outcome={form.result === 'open' ? 'flat' : form.result}
-                  value={form.reasonTags}
-                  onChange={(r) => set('reasonTags', r)}
-                />
-              )}
-            </Field>
-          )}
-
-          <Field
-            label="Why did you take this?"
-            optional
-            tip="Your reason for taking it. One sentence is plenty."
-            hint="This is the bit you'll thank yourself for in a month."
-          >
-            {(id) => (
-              <Textarea
-                id={id}
-                rows={3}
-                placeholder="London open, swept Asia low, took the reclaim."
-                value={form.reason}
-                onChange={(e) => set('reason', e.target.value)}
-              />
-            )}
-          </Field>
-
           <Field
             label="Tags"
             optional

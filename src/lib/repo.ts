@@ -569,6 +569,30 @@ export async function saveTrade(
   return ref.id
 }
 
+/**
+ * Updates a couple of fields on an existing trade.
+ *
+ * Deliberately not `saveTrade`: that recomputes derived figures and rewrites
+ * rule violations, which would be wrong here. A note added after the fact must
+ * not change what the trade was judged against at the time.
+ */
+export async function patchTrade(
+  uid: string,
+  tradeId: string,
+  patch: Partial<Pick<Trade, 'reason' | 'reasonTags'>>,
+): Promise<void> {
+  const payload: Record<string, unknown> = {}
+  for (const [k, v] of Object.entries(patch)) {
+    // Clearing a note must actually clear it, so undefined deletes.
+    payload[k] = v === undefined ? deleteField() : v
+  }
+  if (Object.keys(payload).length === 0) return
+  await updateDoc(doc(tradesCol(uid), tradeId), {
+    ...payload,
+    updatedAt: serverTimestamp(),
+  })
+}
+
 export async function deleteTrade(uid: string, tradeId: string): Promise<void> {
   await deleteDoc(doc(tradesCol(uid), tradeId))
 }

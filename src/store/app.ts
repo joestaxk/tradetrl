@@ -25,6 +25,11 @@ interface AppState {
   entryTarget: Trade | 'new' | null
   /** Prefilled date when opening a fresh entry from a day cell. */
   entryDate: string | null
+  /**
+   * The trade just saved, awaiting an optional reflection. Never persisted —
+   * a half-finished thought should not follow someone into tomorrow.
+   */
+  reflectTarget: Trade | null
   reviewPeriod: PeriodKind
   reviewAnchor: string
 
@@ -36,6 +41,8 @@ interface AppState {
   openNewTrade: (date?: string) => void
   openEditTrade: (trade: Trade) => void
   closeEntry: () => void
+  openReflection: (trade: Trade) => void
+  closeReflection: () => void
   setReviewPeriod: (kind: PeriodKind) => void
   setReviewAnchor: (day: string) => void
 }
@@ -48,6 +55,7 @@ export const useAppStore = create<AppState>()(
       selectedDay: null,
       entryTarget: null,
       entryDate: null,
+      reflectTarget: null,
       reviewPeriod: 'week',
       reviewAnchor: today(),
 
@@ -60,6 +68,8 @@ export const useAppStore = create<AppState>()(
       openNewTrade: (date) => set({ entryTarget: 'new', entryDate: date ?? today() }),
       openEditTrade: (trade) => set({ entryTarget: trade, entryDate: trade.date }),
       closeEntry: () => set({ entryTarget: null, entryDate: null }),
+      openReflection: (reflectTarget) => set({ reflectTarget }),
+      closeReflection: () => set({ reflectTarget: null }),
       setReviewPeriod: (reviewPeriod) => set({ reviewPeriod }),
       setReviewAnchor: (reviewAnchor) => set({ reviewAnchor }),
     }),

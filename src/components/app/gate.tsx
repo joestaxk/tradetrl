@@ -3,6 +3,7 @@ import { NotConfigured, SignIn } from '#/components/app/sign-in'
 import { Onboarding } from '#/components/app/onboarding'
 import { AppShell } from '#/components/app/shell'
 import { TradeEntrySheet } from '#/components/trades/entry-sheet'
+import { ReflectionSheet } from '#/components/trades/reflection-sheet'
 import { useEffect } from 'react'
 import { useAuth } from '#/lib/auth'
 import { clearStaleBuildGuard } from '#/lib/stale-build'
@@ -36,6 +37,8 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
       {children}
       {/* Global: the entry sheet is reachable from every screen. */}
       <TradeEntrySheet />
+      {/* Asked right after a trade is logged; skippable, never celebratory. */}
+      <ReflectionSheet />
     </AppShell>
   )
 }
