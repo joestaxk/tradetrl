@@ -24,6 +24,7 @@ import { IdeaBox } from '#/components/feedback/idea-box'
 import { useFeedback } from '#/lib/use-feedback'
 import { useTrades } from '#/lib/use-trades'
 import { useJournals } from '#/lib/use-journals'
+import { isAllJournals } from '#/lib/journals'
 import { accountStanding, riskAllowance } from '#/lib/balance'
 import { sessionWindowsOf } from '#/lib/sessions'
 import { timeFormatOf } from '#/lib/clock'
@@ -191,6 +192,7 @@ export function SettingsPage() {
       </Card>
 
       {/* ---- risk rules ---- */}
+      {!isAllJournals(account.id) && (
       <Card>
         <CardHeader>
           <div>
@@ -375,6 +377,7 @@ export function SettingsPage() {
           </div>
         </CardBody>
       </Card>
+      )}
 
       {/* ---- cadence + currency ---- */}
       <Card>

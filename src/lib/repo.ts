@@ -24,7 +24,6 @@ import {
   setDoc,
   updateDoc,
   where,
-  writeBatch,
 } from 'firebase/firestore'
 import { getDb } from './firebase'
 import { computeViolations } from './violations'
@@ -43,7 +42,7 @@ import type {
 } from './types'
 
 export { DEFAULT_JOURNAL_ID } from './journals'
-import { DEFAULT_JOURNAL_ID } from './journals'
+import { DEFAULT_JOURNAL_ID, isAllJournals } from './journals'
 
 export const DEFAULT_PREFS: UserPrefs = {
   entryDetailLevel: 'minimal',
@@ -360,16 +359,24 @@ export async function setActiveJournal(uid: string, journalId: string): Promise<
   await updateDoc(doc(db(), 'users', uid), { activeJournalId: journalId })
 }
 
+/**
+ * Removes an account and keeps every trade logged under it.
+ *
+ * This used to delete the trades too, which quietly destroyed history: closing
+ * a finished prop evaluation erased the months of work that got you through
+ * it. Deleting an account is a statement about the account, not about what you
+ * did. The trades keep their `journalId` and remain visible under the
+ * all-accounts lens until the trader deletes them individually.
+ */
 export async function deleteJournal(uid: string, id: string): Promise<void> {
   if (id === DEFAULT_JOURNAL_ID) throw new Error('The default journal cannot be deleted')
-  const trades = await getDocs(query(tradesCol(uid), where('journalId', '==', id)))
-  // Firestore batches cap at 500 writes.
-  for (let i = 0; i < trades.docs.length; i += 400) {
-    const batch = writeBatch(db())
-    for (const d of trades.docs.slice(i, i + 400)) batch.delete(d.ref)
-    await batch.commit()
-  }
   await deleteDoc(doc(journalsCol(uid), id))
+}
+
+/** How many trades would be orphaned — shown before confirming a delete. */
+export async function countJournalTrades(uid: string, id: string): Promise<number> {
+  const snap = await getDocs(query(tradesCol(uid), where('journalId', '==', id)))
+  return snap.size
 }
 
 // ---------------------------------------------------------------------------
@@ -452,7 +459,9 @@ export function subscribeTrades(
       onData(
         snap.docs
           .map((d) => toTrade(d.id, d.data()))
-          .filter((t) => t.journalId === journalId),
+          // The all-accounts lens keeps everything, including trades whose
+          // account has since been deleted — that history is still theirs.
+          .filter((t) => isAllJournals(journalId) || t.journalId === journalId),
       ),
     (e) => onError?.(e),
   )

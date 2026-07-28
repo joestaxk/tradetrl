@@ -1,5 +1,5 @@
 import { useMemo } from 'react'
-import { ArrowUpRight, Columns2, Plus, Quote } from 'lucide-react'
+import { ArrowUpRight, Columns2, MessageSquarePlus, Plus, Quote } from 'lucide-react'
 import {
   Dialog,
   DialogBody,
@@ -20,7 +20,7 @@ import { useJournals } from '#/lib/use-journals'
 import { useTrades } from '#/lib/use-trades'
 import { useAuth } from '#/lib/auth'
 import { formatTime, timeFormatOf } from '#/lib/clock'
-import { chartCaption, chartsOf, hasCharts, sortCharts } from '#/lib/charts'
+import { chartCaption, chartsOf, sortCharts } from '#/lib/charts'
 import { isCostly, reasonLabel } from '#/lib/reasons'
 import type { Trade } from '#/lib/types'
 import { cn } from '#/components/ui/cn'
@@ -34,6 +34,7 @@ export function DayDetail() {
   const closeDay = useAppStore((s) => s.closeDay)
   const openNewTrade = useAppStore((s) => s.openNewTrade)
   const openEditTrade = useAppStore((s) => s.openEditTrade)
+  const openReflection = useAppStore((s) => s.openReflection)
   const { trades } = useTrades()
   const { active: account } = useJournals()
   const { profile } = useAuth()
@@ -145,6 +146,13 @@ export function DayDetail() {
                     closeDay()
                     openEditTrade(t)
                   }}
+                  onAddNote={(t) => {
+                    // Straight to the reflection sheet — the same one shown
+                    // after logging, so a note lives in exactly one place
+                    // whether it is written now or a week later.
+                    closeDay()
+                    openReflection(t)
+                  }}
                 />
               </section>
             </>
@@ -194,11 +202,13 @@ function TradeTable({
   currency,
   clock,
   onEdit,
+  onAddNote,
 }: {
   trades: Trade[]
   currency: string
   clock: '12h' | '24h'
   onEdit: (t: Trade) => void
+  onAddNote: (t: Trade) => void
 }) {
   return (
     <div className="flex flex-col gap-1.5">
@@ -272,17 +282,30 @@ function TradeTable({
             </span>
           </button>
 
-          {(t.reason ||
-            (t.ruleViolations?.length ?? 0) > 0 ||
-            hasCharts(t) ||
-            (t.reasonTags?.length ?? 0) > 0 ||
-            (t.tags?.length ?? 0) > 0) && (
-            <div className="flex flex-col gap-2 border-t border-line px-3 py-2.5">
-              {t.reason && (
-                <p className="flex gap-2 text-[13px] leading-relaxed text-ink-dim">
+          {/*
+            Always rendered, even when empty. Skipping the reflection after a
+            trade must not make it unreachable — this row is where someone
+            comes back hours later having decided what they actually think.
+          */}
+          <div className="flex flex-col gap-2 border-t border-line px-3 py-2.5">
+              {t.reason ? (
+                <button
+                  type="button"
+                  onClick={() => onAddNote(t)}
+                  className="flex gap-2 text-left text-[13px] leading-relaxed text-ink-dim transition-colors hover:text-ink"
+                >
                   <Quote className="mt-0.5 size-3 shrink-0 text-ink-faint" aria-hidden />
                   {t.reason}
-                </p>
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => onAddNote(t)}
+                  className="flex min-h-9 items-center gap-2 self-start rounded-lg border border-dashed border-line px-2.5 text-[12px] text-ink-muted transition-colors hover:border-accent-edge hover:text-accent-bright"
+                >
+                  <MessageSquarePlus className="size-3.5 shrink-0" aria-hidden />
+                  {(t.reasonTags?.length ?? 0) > 0 ? 'Add a note' : 'Why did you take this?'}
+                </button>
               )}
 
               {(t.reasonTags?.length ?? 0) > 0 && (
@@ -316,7 +339,6 @@ function TradeTable({
                 </p>
               ))}
             </div>
-          )}
         </div>
       ))}
     </div>

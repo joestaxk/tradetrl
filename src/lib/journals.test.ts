@@ -1,8 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import {
+  ALL_JOURNALS_ID,
   DEFAULT_JOURNAL_ID,
   activeJournal,
+  allJournalsView,
   compactAmount,
+  isAllJournals,
   journalSubtitle,
   kindLabel,
   resolveJournal,
@@ -147,5 +150,42 @@ describe('labels', () => {
   it('formats balances in the account currency', () => {
     expect(compactAmount(100_000, 'USD')).toBe('$100K')
     expect(compactAmount(500, 'USD')).toBe('$500')
+  })
+})
+
+describe('the all-accounts lens', () => {
+  it('is recognisable, and nothing else is', () => {
+    expect(isAllJournals(ALL_JOURNALS_ID)).toBe(true)
+    expect(isAllJournals(DEFAULT_JOURNAL_ID)).toBe(false)
+    expect(isAllJournals('some-firestore-id')).toBe(false)
+    expect(isAllJournals(undefined)).toBe(false)
+  })
+
+  it('reports no balance, because summing accounts describes nothing', () => {
+    /*
+      A prop evaluation plus a personal account do not add up to a meaningful
+      figure, and a blended risk base would misstate every trade shown under
+      the lens. Better to show nothing than something confidently wrong.
+    */
+    const view = allJournalsView(makePrefs({ accountSize: 50_000 }))
+    expect(view.startingBalance).toBeUndefined()
+    expect(view.riskRules).toEqual({})
+  })
+
+  it('still follows the trader’s display currency', () => {
+    expect(allJournalsView(makePrefs({ currency: 'GBP' })).currency).toBe('GBP')
+  })
+
+  it('is named for what it is', () => {
+    expect(allJournalsView(undefined).name).toBe('All accounts')
+  })
+
+  it('does not collide with a real account', () => {
+    const real = resolveJournal(
+      { id: 'acct-1', name: 'FTMO 50k', createdAt: 0, startingBalance: 50_000 },
+      makePrefs(),
+    )
+    expect(isAllJournals(real.id)).toBe(false)
+    expect(real.startingBalance).toBe(50_000)
   })
 })

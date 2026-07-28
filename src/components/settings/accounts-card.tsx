@@ -346,15 +346,18 @@ function AccountDialog({
 
           {isEdit && canDelete && (
             <p className="text-[12px] leading-relaxed text-ink-faint">
-              Deleting <span className="text-ink">{journal?.name}</span> also deletes
-              every trade logged in it, and its whole balance history. There's no undo.
+              Deleting <span className="text-ink">{journal?.name}</span> removes the
+              account and its rules. <span className="text-ink">Your trades stay</span> —
+              they keep showing under “All accounts”, and you can still delete them
+              individually. Closing a finished evaluation shouldn't erase the work that
+              got you through it.
             </p>
           )}
 
           {/*
-            Type-to-confirm, because this is the one action in the app that
-            destroys data a trader cannot rebuild. A mis-tap must not be able
-            to erase a year of journalling.
+            Type-to-confirm is kept even though trades now survive: rules,
+            balance history and the account's identity still go, and that is
+            not something a mis-tap should be able to do.
           */}
           {isEdit && canDelete && (
             <Field

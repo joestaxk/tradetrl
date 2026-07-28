@@ -1,7 +1,13 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
 import { useAuth } from './auth'
 import { subscribeJournals, setActiveJournal as persistActive, updateJournal } from './repo'
-import { activeJournal, resolveJournal, visibleJournals } from './journals'
+import {
+  activeJournal,
+  allJournalsView,
+  isAllJournals,
+  resolveJournal,
+  visibleJournals,
+} from './journals'
 import type { Journal, ResolvedJournal } from './types'
 
 export interface JournalsValue {
@@ -92,6 +98,9 @@ export function useJournals(): JournalsValue {
   )
 
   const active = useMemo(() => {
+    const wanted = localActiveId ?? profile?.activeJournalId
+    if (isAllJournals(wanted)) return allJournalsView(profile?.prefs)
+
     const chosen =
       (localActiveId && journals.find((j) => j.id === localActiveId)) ||
       activeJournal(journals, profile)

@@ -15,6 +15,35 @@ import type { Journal, ResolvedJournal, UserDoc, UserPrefs } from './types'
 
 export const DEFAULT_JOURNAL_ID = 'default'
 
+/**
+ * The "every account at once" lens.
+ *
+ * Not a real journal — no balance, no rules, nothing stored under it. It is a
+ * way of *looking* at trades, which is why logging is not allowed while it is
+ * selected: a trade has to belong to an account for its risk to mean anything.
+ */
+export const ALL_JOURNALS_ID = '__all__'
+
+export function isAllJournals(id: string | undefined): boolean {
+  return id === ALL_JOURNALS_ID
+}
+
+/** The synthetic account shown while the all-accounts lens is active. */
+export function allJournalsView(prefs: UserPrefs | undefined): ResolvedJournal {
+  return {
+    id: ALL_JOURNALS_ID,
+    name: 'All accounts',
+    // No balance and no rules on purpose. Summing balances across a prop
+    // evaluation and a personal account produces a number that means nothing,
+    // and a blended risk rule would misreport every trade under it.
+    startingBalance: undefined,
+    startedOn: undefined,
+    riskBasis: 'starting',
+    currency: prefs?.currency ?? 'USD',
+    riskRules: {},
+  }
+}
+
 export function resolveJournal(
   journal: Journal | null | undefined,
   prefs: UserPrefs | undefined,

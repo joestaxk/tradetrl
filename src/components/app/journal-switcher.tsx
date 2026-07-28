@@ -9,7 +9,13 @@ import {
   DropdownTrigger,
 } from '#/components/ui/overlays'
 import { Badge } from '#/components/ui/primitives'
-import { journalSubtitle, kindLabel, resolveJournal } from '#/lib/journals'
+import {
+  ALL_JOURNALS_ID,
+  isAllJournals,
+  journalSubtitle,
+  kindLabel,
+  resolveJournal,
+} from '#/lib/journals'
 import { useAuth } from '#/lib/auth'
 import { useJournals } from '#/lib/use-journals'
 import { cn } from '#/components/ui/cn'
@@ -28,7 +34,9 @@ export function JournalSwitcher({ className }: { className?: string }) {
   const { profile } = useAuth()
   const { journals, active, switchTo } = useJournals()
 
-  if (journals.length <= 1) return null
+  // Shown once there is more than one thing to choose between — which now
+  // includes the all-accounts lens, so a second account is not required.
+  if (journals.length === 0) return null
 
   return (
     <Dropdown>
@@ -51,6 +59,23 @@ export function JournalSwitcher({ className }: { className?: string }) {
 
       <DropdownContent align="start" className="min-w-64">
         <DropdownLabel>Accounts</DropdownLabel>
+
+        {/*
+          A lens rather than an account: every trade you have ever logged,
+          including any whose account was later deleted.
+        */}
+        <DropdownItem className="h-auto py-2" onSelect={() => void switchTo(ALL_JOURNALS_ID)}>
+          <span className="flex min-w-0 flex-col">
+            <span className="truncate text-[13px] text-ink">All accounts</span>
+            <span className="truncate text-[11px] text-ink-faint">
+              Everything in one calendar
+            </span>
+          </span>
+          {isAllJournals(active.id) && (
+            <Check className="ml-auto size-4 shrink-0 text-accent" aria-hidden />
+          )}
+        </DropdownItem>
+        <DropdownSeparator />
         {journals.map((j) => {
           const resolved = resolveJournal(j, profile?.prefs)
           const subtitle = journalSubtitle(resolved)

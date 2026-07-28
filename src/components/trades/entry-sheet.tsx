@@ -24,6 +24,7 @@ import { Badge, Divider } from '#/components/ui/primitives'
 import { toast } from '#/components/ui/toast'
 import { useAuth } from '#/lib/auth'
 import { useJournals } from '#/lib/use-journals'
+import { DEFAULT_JOURNAL_ID, isAllJournals } from '#/lib/journals'
 import { useAppStore } from '#/store/app'
 import { useTrades } from '#/lib/use-trades'
 import { deleteTrade, saveTrade } from '#/lib/repo'
@@ -134,7 +135,16 @@ export function TradeEntrySheet() {
   const open = entryTarget !== null
   const editing = entryTarget !== null && entryTarget !== 'new' ? entryTarget : null
   const detailed = profile?.prefs.entryDetailLevel === 'detailed'
-  const { active: account } = useJournals()
+  const { active: account, journals } = useJournals()
+
+  /*
+    A trade must belong to a real account — risk means nothing otherwise. When
+    the all-accounts lens is showing, fall back to the first real account so
+    logging never silently writes to an id nothing owns.
+  */
+  const targetAccountId = isAllJournals(account.id)
+    ? (journals[0]?.id ?? DEFAULT_JOURNAL_ID)
+    : account.id
   const currency = account.currency
   const { active: strategies } = useStrategies()
 
@@ -429,7 +439,7 @@ export function TradeEntrySheet() {
 
       const savedId = await saveTrade(
         user.uid,
-        account.id,
+        targetAccountId,
         draft,
         {
           rules: account.riskRules,
@@ -458,7 +468,7 @@ export function TradeEntrySheet() {
         openReflection({
           ...(draft as unknown as Trade),
           id: savedId,
-          journalId: account.id,
+          journalId: targetAccountId,
           createdAt: Date.now(),
         })
       }

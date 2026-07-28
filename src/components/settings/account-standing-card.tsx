@@ -6,6 +6,7 @@ import { Sparkline } from '#/components/charts/equity-curve'
 import { accountStanding, balanceCurve, riskAllowance } from '#/lib/balance'
 import { formatMoney, formatPct } from '#/lib/calc'
 import { useJournals } from '#/lib/use-journals'
+import { isAllJournals } from '#/lib/journals'
 import { useTrades } from '#/lib/use-trades'
 import { cn } from '#/components/ui/cn'
 
@@ -29,6 +30,29 @@ export function AccountStandingCard() {
     () => trades.filter((t) => t.status === 'open').length,
     [trades],
   )
+
+  /*
+    No balance under the all-accounts lens, deliberately. Summing a prop
+    evaluation and a personal account produces a figure that describes nothing,
+    and a blended risk base would misreport every trade under it.
+  */
+  if (isAllJournals(account.id)) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle>All accounts</CardTitle>
+          <Wallet className="size-4 shrink-0 text-ink-faint" aria-hidden />
+        </CardHeader>
+        <CardBody>
+          <p className="text-[13px] leading-relaxed text-ink-muted">
+            You're viewing every account at once, so there's no single balance or
+            risk rule to show. Pick an account from the switcher to see its
+            standing and edit its rules.
+          </p>
+        </CardBody>
+      </Card>
+    )
+  }
 
   if (standing.startingBalance === null) {
     return (
