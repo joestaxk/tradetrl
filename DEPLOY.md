@@ -1,4 +1,4 @@
-# Deploying tradetrl
+# Deploying tradetrl app
 
 ## Vercel
 
