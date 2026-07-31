@@ -24,6 +24,9 @@ import { Badge, Divider } from '#/components/ui/primitives'
 import { toast } from '#/components/ui/toast'
 import { useAuth } from '#/lib/auth'
 import { useJournals } from '#/lib/use-journals'
+import { replicaSummary, replicateTrade } from '#/lib/replicate'
+import { AccountMultiSelect } from '#/components/trades/account-multi-select'
+import { resolveJournal } from '#/lib/journals'
 import { DEFAULT_JOURNAL_ID, isAllJournals } from '#/lib/journals'
 import { useAppStore } from '#/store/app'
 import { useTrades } from '#/lib/use-trades'
@@ -145,6 +148,13 @@ export function TradeEntrySheet() {
   const targetAccountId = isAllJournals(account.id)
     ? (journals[0]?.id ?? DEFAULT_JOURNAL_ID)
     : account.id
+
+  const allAccounts = useMemo(
+    () => journals.map((j) => resolveJournal(j, profile?.prefs)),
+    [journals, profile?.prefs],
+  )
+
+
   const currency = account.currency
   const { active: strategies } = useStrategies()
 
@@ -166,6 +176,8 @@ export function TradeEntrySheet() {
   // True once the trader picks the custom escape hatch, or when editing a
   // trade whose pair isn't in the curated list.
   const [customPair, setCustomPair] = useState(false)
+  // Accounts this trade lands on. Always includes the one being filled in.
+  const [alsoAccounts, setAlsoAccounts] = useState<string[]>([])
   const pairRef = useRef<HTMLInputElement>(null)
 
   // Seed the form whenever the sheet opens, for a new trade or an edit.
@@ -205,6 +217,7 @@ export function TradeEntrySheet() {
       setForm({ ...BLANK, date: entryDate ?? today() })
       setShowDetail(detailed)
       setCustomPair(false)
+      setAlsoAccounts([targetAccountId])
     }
   }, [open, editing, entryDate, detailed])
 
@@ -276,6 +289,25 @@ export function TradeEntrySheet() {
     // Nothing typed: fall back to what R implies, if it implies anything.
     return fromR.pnl ?? undefined
   }, [form.amount, form.result, isOpen, fromR.pnl])
+
+  /*
+    One decision taken on four funded accounts is four journal entries. Doing
+    that by hand is enough friction that people log it once, which understates
+    the risk they actually took by a factor of four.
+  */
+  const replicas = useMemo(() => {
+    const chosen = allAccounts.filter((a) => alsoAccounts.includes(a.id))
+    if (chosen.length <= 1 || signedAmount === undefined) return []
+    return replicateTrade({
+      draft: { pnl: signedAmount } as unknown as TradeDraft,
+      sourceJournalId: targetAccountId,
+      sourceRiskBase: standing.riskBase,
+      targets: chosen.map((a) => ({
+        journal: a,
+        riskBase: accountStanding(a, trades).riskBase,
+      })),
+    })
+  }, [allAccounts, alsoAccounts, signedAmount, targetAccountId, standing.riskBase, trades])
 
   // Prefill the close clock the moment a result is picked, so recording the
   // duration costs nothing — but only once, so an edit never overwrites it.
@@ -437,25 +469,70 @@ export function TradeEntrySheet() {
         tags: form.tags,
       }
 
-      const savedId = await saveTrade(
-        user.uid,
-        targetAccountId,
-        draft,
-        {
-          rules: account.riskRules,
-          plannedStrategyIds,
-          strategyNameOf: (id) => strategies.find((x) => x.id === id)?.name,
-          sessionWindows,
-          accountSize: standing.riskBase ?? undefined,
-          sameDayTradeCount,
-        },
-        editing?.id,
-      )
+      /*
+        One trade per selected account. Each gets its own risk figures, scaled
+        from its own balance, and its own rule check — a trade that is within
+        the rules on a 100k account may not be on a 25k one, and both readings
+        need to be true for their own account.
+      */
+      const chosen = allAccounts.filter((a) => alsoAccounts.includes(a.id))
+      const spread =
+        !editing && chosen.length > 1
+          ? replicateTrade({
+              draft,
+              sourceJournalId: targetAccountId,
+              sourceRiskBase: standing.riskBase,
+              targets: chosen.map((a) => ({
+                journal: a,
+                riskBase: accountStanding(a, trades).riskBase,
+              })),
+            })
+          : [
+              {
+                journalId: targetAccountId,
+                journalName: account.name,
+                draft,
+                riskAmount: null,
+                scale: 1,
+                unscaled: false,
+              },
+            ]
+
+      let savedId = ''
+      for (const replica of spread) {
+        const target = allAccounts.find((a) => a.id === replica.journalId)
+        const id = await saveTrade(
+          user.uid,
+          replica.journalId,
+          replica.draft,
+          {
+            rules: target?.riskRules ?? account.riskRules,
+            plannedStrategyIds,
+            strategyNameOf: (sid) => strategies.find((x) => x.id === sid)?.name,
+            sessionWindows,
+            accountSize:
+              (target ? accountStanding(target, trades).riskBase : standing.riskBase) ??
+              undefined,
+            sameDayTradeCount,
+          },
+          // Only the source trade is ever an edit; the rest are new.
+          replica.journalId === targetAccountId ? editing?.id : undefined,
+        )
+        if (replica.journalId === targetAccountId) savedId = id
+      }
 
       // Confirmation is neutral, whatever the outcome. We don't congratulate
       // wins or commiserate losses — the journal has no opinion (§0).
       toast.success(
-        resolving ? 'Resolved' : editing ? 'Trade updated' : isOpen ? 'Logged as open' : 'Logged',
+        resolving
+          ? 'Resolved'
+          : editing
+            ? 'Trade updated'
+            : isOpen
+              ? 'Logged as open'
+              : spread.length > 1
+                ? `Logged to ${spread.length} accounts`
+                : 'Logged',
       )
       closeEntry()
 
@@ -959,6 +1036,17 @@ export function TradeEntrySheet() {
             "what went wrong" UI — that framing turns a journal into a
             confessional.
           */}
+          {/* Only when there is genuinely more than one account to pick. */}
+          {!isOpen && (
+            <AccountMultiSelect
+              accounts={allAccounts}
+              sourceId={targetAccountId}
+              selected={alsoAccounts}
+              onChange={setAlsoAccounts}
+              summary={replicaSummary(replicas, account.currency)}
+            />
+          )}
+
           <Field
             label="Tags"
             optional
